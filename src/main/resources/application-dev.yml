@@ -11,6 +11,7 @@ spring:
   jpa:
     show-sql: false
 
+
 logging:
   level:
     root: WARN
