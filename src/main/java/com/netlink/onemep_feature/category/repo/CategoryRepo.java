@@ -25,4 +25,6 @@ public interface CategoryRepo
 
   @Query("SELECT c FROM CategoryMaster c WHERE LOWER(c.prefix) = LOWER(:prefix)")
   Optional<CategoryMaster> findByPrefixIgnoreCase(@Param("prefix") String prefix);
+
+  Optional<CategoryMaster> findBySeriesCode(Integer seriesCode);
 }

@@ -64,10 +64,16 @@ public class ProjectController {
     return ResponseEntity.ok(projectService.updateStatus(id, active));
   }
 
+  /**
+   * Change only the lifecycle status (ONEMEP-12/15). A reason is mandatory when moving to On Hold
+   * or Closed; a notification is sent to the project leads.
+   */
   @PatchMapping("/{id}/lifecycle")
   public ResponseEntity<ApiResponse<?>> updateLifecycle(
-      @PathVariable @NotNull Long id, @RequestParam @NotBlank String lifecycleStatus) {
-    return ResponseEntity.ok(projectService.updateLifecycle(id, lifecycleStatus));
+      @PathVariable @NotNull Long id,
+      @RequestParam @NotBlank String lifecycleStatus,
+      @RequestParam(required = false) String reason) {
+    return ResponseEntity.ok(projectService.updateLifecycle(id, lifecycleStatus, reason));
   }
 
   /** Change only the project priority; triggers a notification to the project leads. */
@@ -75,5 +81,15 @@ public class ProjectController {
   public ResponseEntity<ApiResponse<?>> updatePriority(
       @PathVariable @NotNull Long id, @RequestParam @NotBlank String priority) {
     return ResponseEntity.ok(projectService.updatePriority(id, priority));
+  }
+
+  /**
+   * Confirm a project from the listing (ONEMEP-12): Non-confirmed → Confirmed reassigns the Project
+   * ID from the category series and locks the type. The transition is irreversible.
+   */
+  @PatchMapping("/{id}/type")
+  public ResponseEntity<ApiResponse<?>> updateType(
+      @PathVariable @NotNull Long id, @RequestParam @NotBlank String type) {
+    return ResponseEntity.ok(projectService.updateType(id, type));
   }
 }

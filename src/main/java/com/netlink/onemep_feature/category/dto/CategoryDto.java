@@ -2,6 +2,7 @@ package com.netlink.onemep_feature.category.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 
@@ -19,6 +20,7 @@ public final class CategoryDto {
               regexp = "^[A-Za-z0-9]+$",
               message = "Prefix may contain only letters and digits.")
           String prefix,
+      @Positive(message = "Series code must be a positive number.") Integer seriesCode,
       Boolean active) {}
 
   /** Name and availability are editable; category number and prefix stay locked. */
@@ -33,9 +35,10 @@ public final class CategoryDto {
       String categoryNumber,
       String name,
       String prefix,
+      Integer seriesCode,
       Boolean active,
       Long updatedBy,
       LocalDateTime updatedDate) {}
 
-  public record ActiveItem(Long id, String name, String prefix) {}
+  public record ActiveItem(Long id, String name, String prefix, Integer seriesCode) {}
 }

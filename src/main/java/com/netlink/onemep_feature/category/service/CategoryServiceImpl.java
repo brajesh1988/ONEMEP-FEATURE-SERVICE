@@ -48,7 +48,10 @@ public class CategoryServiceImpl implements CategoryService {
   public ApiResponse<?> listActive() {
     List<CategoryDto.ActiveItem> items =
         categoryRepo.findAllActive().stream()
-            .map(c -> new CategoryDto.ActiveItem(c.getId(), c.getName(), c.getPrefix()))
+            .map(
+                c ->
+                    new CategoryDto.ActiveItem(
+                        c.getId(), c.getName(), c.getPrefix(), c.getSeriesCode()))
             .toList();
     return apiResponseAdaptor.success("Active categories fetched successfully.", items);
   }
@@ -71,10 +74,20 @@ public class CategoryServiceImpl implements CategoryService {
             c -> {
               throw new DuplicateResourceException("A category with this prefix already exists.");
             });
+    if (request.seriesCode() != null) {
+      categoryRepo
+          .findBySeriesCode(request.seriesCode())
+          .ifPresent(
+              c -> {
+                throw new DuplicateResourceException(
+                    "A category with this series code already exists.");
+              });
+    }
 
     CategoryMaster category = new CategoryMaster();
     category.setName(name);
     category.setPrefix(prefix);
+    category.setSeriesCode(request.seriesCode());
     category.setActive(request.active() == null ? Boolean.TRUE : request.active());
     category.setCreatedBy(SecurityUtils.getUserId().orElse(null));
     // A temp, unique placeholder satisfies NOT NULL/UNIQUE on the initial insert; the real,
@@ -157,6 +170,7 @@ public class CategoryServiceImpl implements CategoryService {
         c.getCategoryNumber(),
         c.getName(),
         c.getPrefix(),
+        c.getSeriesCode(),
         c.getActive(),
         c.getUpdatedBy(),
         c.getUpdatedDate());

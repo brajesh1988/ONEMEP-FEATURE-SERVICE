@@ -1,5 +1,6 @@
 package com.netlink.onemep_feature.notification;
 
+import com.netlink.onemep_feature.common.util.DateUtils;
 import com.netlink.onemep_feature.project.model.ProjectMaster;
 import com.netlink.onemep_feature.user.model.UserAccountRef;
 import com.netlink.onemep_feature.user.repo.UserAccountRefRepo;
@@ -41,25 +42,46 @@ public class EmailProjectNotificationService implements ProjectNotificationServi
 
   @Override
   public void notifyLifecycleChanged(
-      ProjectMaster project, String oldStatus, String newStatus, List<Long> leadUserIds) {
+      ProjectMaster project,
+      String oldStatus,
+      String newStatus,
+      String reason,
+      Long updatedBy,
+      List<Long> leadUserIds) {
     String subject =
         String.format("[%s] Lifecycle changed: %s", project.getProjectNumber(), newStatus);
-    String body =
-        String.format(
-            "Project \"%s\" (%s) lifecycle status changed from %s to %s.",
-            project.getName(), project.getProjectNumber(), oldStatus, newStatus);
-    send(subject, body, leadUserIds);
+    StringBuilder body = new StringBuilder();
+    body.append("Project Name: ").append(project.getName()).append('\n');
+    body.append("Project Number: ").append(project.getProjectNumber()).append('\n');
+    body.append("Previous Lifecycle: ").append(oldStatus).append('\n');
+    body.append("Updated Lifecycle: ").append(newStatus).append('\n');
+    if (reason != null && !reason.isBlank()) {
+      body.append("Reason: ").append(reason).append('\n');
+    }
+    body.append("Updated By: ").append(updatedBy == null ? "system" : updatedBy).append('\n');
+    body.append("Timestamp: ").append(DateUtils.getCurrentUtcTime());
+    send(subject, body.toString(), leadUserIds);
   }
 
   @Override
   public void notifyPriorityChanged(
-      ProjectMaster project, String oldPriority, String newPriority, List<Long> leadUserIds) {
+      ProjectMaster project,
+      String oldPriority,
+      String newPriority,
+      Long updatedBy,
+      List<Long> leadUserIds) {
     String subject =
         String.format("[%s] Priority changed: %s", project.getProjectNumber(), newPriority);
     String body =
         String.format(
-            "Project \"%s\" (%s) priority changed from %s to %s.",
-            project.getName(), project.getProjectNumber(), oldPriority, newPriority);
+            "Project Name: %s%nProject Number: %s%nPrevious Priority: %s%nUpdated Priority: %s%n"
+                + "Updated By: %s%nTimestamp: %s",
+            project.getName(),
+            project.getProjectNumber(),
+            oldPriority,
+            newPriority,
+            updatedBy == null ? "system" : updatedBy,
+            DateUtils.getCurrentUtcTime());
     send(subject, body, leadUserIds);
   }
 

@@ -28,6 +28,13 @@ public class CategoryMaster extends BaseEntity {
   @Column(name = "prefix", nullable = false, updatable = false)
   private String prefix;
 
+  /**
+   * Numeric series used to build confirmed Project IDs (e.g. series 4 → {@code 40012}). Unique
+   * across categories; locked after creation.
+   */
+  @Column(name = "series_code", updatable = false)
+  private Integer seriesCode;
+
   @Column(name = "is_active", nullable = false)
   private Boolean active = Boolean.TRUE;
 }

@@ -17,7 +17,12 @@ public interface ProjectService {
 
   ApiResponse<?> updateStatus(Long id, Boolean active);
 
-  ApiResponse<?> updateLifecycle(Long id, String lifecycleStatus);
+  ApiResponse<?> updateLifecycle(Long id, String lifecycleStatus, String reason);
 
   ApiResponse<?> updatePriority(Long id, String priority);
+
+  /**
+   * Confirm a Non-confirmed project: reassigns the Project ID and locks the type (ONEMEP-12/14).
+   */
+  ApiResponse<?> updateType(Long id, String type);
 }

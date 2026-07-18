@@ -52,7 +52,8 @@ class ProjectControllerStatusTest {
         .perform(
             post("/projects")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Apollo\",\"categoryId\":1}"))
+                .content(
+                    "{\"name\":\"Apollo\",\"categoryId\":1,\"type\":\"NON_CONFIRMED\",\"priority\":\"HIGH\"}"))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.success").value(true));
   }

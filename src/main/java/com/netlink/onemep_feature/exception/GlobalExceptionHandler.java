@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /** Central error → {@link ApiResponse} envelope translation (RFC 7807 disabled deliberately). */
@@ -144,6 +145,17 @@ public class GlobalExceptionHandler {
                 ErrorCode.RESOURCE_IN_USE,
                 "The request conflicts with existing data or references a record that does not"
                     + " exist.",
+                true));
+  }
+
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  public ResponseEntity<ApiResponse<Void>> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+    log.warn("Upload exceeded max size: {}", ex.getMessage());
+    return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+        .body(
+            apiResponseAdaptor.error(
+                ErrorCode.PAYLOAD_TOO_LARGE,
+                "The uploaded file exceeds the maximum allowed size of 150 MB.",
                 true));
   }
 

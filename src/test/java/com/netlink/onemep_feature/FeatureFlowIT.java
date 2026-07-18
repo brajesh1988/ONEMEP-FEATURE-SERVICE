@@ -3,7 +3,10 @@ package com.netlink.onemep_feature;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -14,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -54,12 +58,16 @@ class FeatureFlowIT {
   @Autowired private ObjectMapper objectMapper;
 
   @Test
-  void masterDataToProjectFlow_generatesNumber_andEnforcesDeleteGuard() throws Exception {
+  void projectEpicFlow_typeIdScheme_confirm_lifecycleReason_andGuards() throws Exception {
     long categoryId =
         idOf(
-            perform(post("/categories").content("{\"name\":\"Infrastructure\",\"prefix\":\"inf\"}"))
+            perform(
+                    post("/categories")
+                        .content(
+                            "{\"name\":\"Infrastructure\",\"prefix\":\"inf\",\"seriesCode\":6}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.prefix").value("INF"))
+                .andExpect(jsonPath("$.data.seriesCode").value(6))
                 .andExpect(jsonPath("$.data.categoryNumber").value("CAT-00001"))
                 .andReturn());
 
@@ -77,6 +85,19 @@ class FeatureFlowIT {
                 .andExpect(status().isCreated())
                 .andReturn());
 
+    long officeId =
+        idOf(
+            perform(post("/handling-offices").content("{\"name\":\"Dubai Office\"}"))
+                .andExpect(status().isCreated())
+                .andReturn());
+
+    long levelId =
+        idOf(
+            perform(post("/detailing-levels").content("{\"name\":\"LOD 400\"}"))
+                .andExpect(status().isCreated())
+                .andReturn());
+
+    // Non-confirmed project → NC-prefixed number, lifecycle defaults to ACTIVE.
     long projectId =
         idOf(
             perform(
@@ -84,21 +105,115 @@ class FeatureFlowIT {
                         .content(
                             "{\"name\":\"Apollo\",\"categoryId\":"
                                 + categoryId
+                                + ",\"type\":\"NON_CONFIRMED\",\"priority\":\"MEDIUM\",\"client\":\"Acme\","
+                                + "\"location\":\"Dubai\",\"handlingOfficeId\":"
+                                + officeId
+                                + ",\"detailingLevelId\":"
+                                + levelId
                                 + ",\"leadUserIds\":[1],\"members\":[{\"userId\":2,\"teamRoleId\":"
                                 + teamRoleId
                                 + "}]}"))
                 .andExpect(status().isCreated())
                 .andExpect(
                     jsonPath("$.data.projectNumber")
-                        .value(org.hamcrest.Matchers.matchesPattern("INF-\\d{5}")))
-                .andExpect(jsonPath("$.data.lifecycleStatus").value("DRAFT"))
+                        .value(org.hamcrest.Matchers.matchesPattern("NC\\d{4}")))
+                .andExpect(jsonPath("$.data.type").value("NON_CONFIRMED"))
+                .andExpect(jsonPath("$.data.lifecycleStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.handlingOfficeName").value("Dubai Office"))
                 .andExpect(jsonPath("$.data.leadUserIds[0]").value(1))
                 .andReturn());
 
-    perform(get("/projects/" + projectId)).andExpect(status().isOk());
+    // Name character rule: '#' is not allowed.
+    perform(
+            post("/projects")
+                .content(
+                    "{\"name\":\"Bad#Name\",\"categoryId\":"
+                        + categoryId
+                        + ",\"type\":\"NON_CONFIRMED\",\"priority\":\"LOW\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
 
-    // Structured filter: the project defaults to MEDIUM priority, so it must be returned.
-    perform(post("/projects/list").content("{\"filters\":{\"priority\":\"MEDIUM\"}}"))
+    // Confirm the project → Project ID reassigned from series 6, type locked.
+    perform(patch("/projects/" + projectId + "/type").param("type", "CONFIRMED"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.type").value("CONFIRMED"))
+        .andExpect(jsonPath("$.data.typeLocked").value(true))
+        .andExpect(
+            jsonPath("$.data.projectNumber")
+                .value(org.hamcrest.Matchers.matchesPattern("6\\d{4}")));
+
+    // Confirmed project cannot revert to Non-confirmed.
+    perform(patch("/projects/" + projectId + "/type").param("type", "NON_CONFIRMED"))
+        .andExpect(status().isBadRequest());
+
+    // Lifecycle → ON_HOLD requires a reason.
+    perform(patch("/projects/" + projectId + "/lifecycle").param("lifecycleStatus", "ON_HOLD"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    perform(
+            patch("/projects/" + projectId + "/lifecycle")
+                .param("lifecycleStatus", "ON_HOLD")
+                .param("reason", "Awaiting client sign-off"))
+        .andExpect(status().isOk());
+
+    // ONEMEP-15 overview sections: specs sheet upload, delivery schedule, stakeholders.
+    MockMultipartFile specFile =
+        new MockMultipartFile(
+            "file", "design-basis.pdf", "application/pdf", "PDF-CONTENT".getBytes());
+    long sheetId =
+        idOf(
+            mockMvc
+                .perform(
+                    multipart("/projects/" + projectId + "/spec-sheets")
+                        .file(specFile)
+                        .with(jwt().jwt(j -> j.subject("1"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.fileExtension").value("pdf"))
+                .andReturn());
+
+    // Disallowed extension is rejected.
+    mockMvc
+        .perform(
+            multipart("/projects/" + projectId + "/spec-sheets")
+                .file(new MockMultipartFile("file", "notes.txt", "text/plain", "x".getBytes()))
+                .with(jwt().jwt(j -> j.subject("1"))))
+        .andExpect(status().isBadRequest());
+
+    // Download returns the stored bytes.
+    mockMvc
+        .perform(
+            get("/projects/" + projectId + "/spec-sheets/" + sheetId + "/download")
+                .with(jwt().jwt(j -> j.subject("1"))))
+        .andExpect(status().isOk())
+        .andExpect(content().bytes("PDF-CONTENT".getBytes()));
+
+    perform(
+            post("/projects/" + projectId + "/delivery-schedule")
+                .content(
+                    "{\"milestone\":\"Design Freeze\",\"deliverable\":\"IFC drawings\","
+                        + "\"plannedDate\":\"2026-09-01\",\"status\":\"IN_PROGRESS\"}"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"));
+
+    perform(
+            post("/projects/" + projectId + "/stakeholders")
+                .content(
+                    "{\"role\":\"PROJECT_HEAD\",\"name\":\"Jane Doe\","
+                        + "\"organization\":\"Acme\",\"email\":\"jane@acme.com\"}"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.data.role").value("PROJECT_HEAD"));
+
+    // Overview aggregates every section + the activity log.
+    perform(get("/projects/" + projectId + "/overview"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.project.lifecycleStatus").value("ON_HOLD"))
+        .andExpect(jsonPath("$.data.specSheets[0].fileName").value("design-basis.pdf"))
+        .andExpect(jsonPath("$.data.deliverySchedule[0].milestone").value("Design Freeze"))
+        .andExpect(jsonPath("$.data.stakeholders[0].name").value("Jane Doe"))
+        .andExpect(jsonPath("$.data.activity").isNotEmpty());
+
+    // Structured Type filter returns the confirmed project.
+    perform(post("/projects/list").content("{\"filters\":{\"type\":\"CONFIRMED\"}}"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.totalElements").value(1));
 

@@ -20,7 +20,12 @@
     { "key": "teamRoleId", "value": "1" },
     { "key": "unitId", "value": "1" },
     { "key": "technicalId", "value": "1" },
-    { "key": "projectId", "value": "1" }
+    { "key": "handlingOfficeId", "value": "1" },
+    { "key": "detailingLevelId", "value": "1" },
+    { "key": "projectId", "value": "1" },
+    { "key": "specSheetId", "value": "1" },
+    { "key": "deliveryItemId", "value": "1" },
+    { "key": "stakeholderId", "value": "1" }
   ],
   "item": [
     {
@@ -100,7 +105,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"HVAC\",\n  \"prefix\": \"HVAC\",\n  \"active\": true\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"HVAC\",\n  \"prefix\": \"HVAC\",\n  \"seriesCode\": 4,\n  \"active\": true\n}" },
             "url": { "raw": "{{baseUrl}}/categories", "host": ["{{baseUrl}}"], "path": ["categories"] }
           }
         },
@@ -354,7 +359,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant\",\n  \"categoryId\": {{categoryId}},\n  \"priority\": \"HIGH\",\n  \"description\": \"HVAC discipline scope: central chiller plant sizing and CHW distribution.\",\n  \"leadUserIds\": [1],\n  \"members\": [\n    { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} }\n  ]\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant\",\n  \"categoryId\": {{categoryId}},\n  \"type\": \"NON_CONFIRMED\",\n  \"priority\": \"HIGH\",\n  \"lifecycleStatus\": \"ACTIVE\",\n  \"client\": \"Marina Developments LLC\",\n  \"location\": \"Singapore\",\n  \"handlingOfficeId\": {{handlingOfficeId}},\n  \"detailingLevelId\": {{detailingLevelId}},\n  \"description\": \"HVAC discipline scope: central chiller plant sizing and CHW distribution.\",\n  \"leadUserIds\": [1],\n  \"members\": [\n    { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} }\n  ]\n}" },
             "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] }
           }
         },
@@ -363,7 +368,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": {\n    \"pageNumber\": 0,\n    \"pageSize\": 20,\n    \"sortBy\": \"name\",\n    \"sortDirection\": \"ASC\"\n  },\n  \"filters\": {\n    \"search\": \"\",\n    \"priority\": \"\",\n    \"lifecycleStatus\": \"\",\n    \"active\": true\n  }\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": {\n    \"pageNumber\": 0,\n    \"pageSize\": 20,\n    \"sortBy\": \"name\",\n    \"sortDirection\": \"ASC\"\n  },\n  \"filters\": {\n    \"search\": \"\",\n    \"type\": \"\",\n    \"priority\": \"\",\n    \"lifecycleStatus\": \"\",\n    \"categoryId\": \"\",\n    \"active\": true\n  }\n}" },
             "url": { "raw": "{{baseUrl}}/projects/list", "host": ["{{baseUrl}}"], "path": ["projects", "list"] }
           }
         },
@@ -374,7 +379,7 @@
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant (Rev B)\",\n  \"priority\": \"CRITICAL\",\n  \"lifecycleStatus\": \"ACTIVE\",\n  \"description\": \"Updated scope after design review.\",\n  \"leadUserIds\": [1],\n  \"members\": [ { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} } ]\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant (Rev B)\",\n  \"priority\": \"CRITICAL\",\n  \"lifecycleStatus\": \"ON_HOLD\",\n  \"client\": \"Marina Developments LLC\",\n  \"location\": \"Singapore\",\n  \"handlingOfficeId\": {{handlingOfficeId}},\n  \"detailingLevelId\": {{detailingLevelId}},\n  \"lifecycleReason\": \"Awaiting client sign-off on revised scope.\",\n  \"description\": \"Updated scope after design review.\",\n  \"leadUserIds\": [1],\n  \"members\": [ { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} } ]\n}" },
             "url": { "raw": "{{baseUrl}}/projects/{{projectId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}"] }
           }
         },
@@ -386,10 +391,10 @@
           }
         },
         {
-          "name": "Patch project lifecycle",
+          "name": "Patch project lifecycle (On Hold + reason)",
           "request": {
             "method": "PATCH",
-            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/lifecycle?lifecycleStatus=ACTIVE", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "lifecycle"], "query": [{ "key": "lifecycleStatus", "value": "ACTIVE" }] }
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/lifecycle?lifecycleStatus=ON_HOLD&reason=Awaiting client sign-off", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "lifecycle"], "query": [{ "key": "lifecycleStatus", "value": "ON_HOLD" }, { "key": "reason", "value": "Awaiting client sign-off" }] }
           }
         },
         {
@@ -398,7 +403,170 @@
             "method": "PATCH",
             "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/priority?priority=CRITICAL", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "priority"], "query": [{ "key": "priority", "value": "CRITICAL" }] }
           }
+        },
+        {
+          "name": "Confirm project (Non-confirmed -> Confirmed)",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/type?type=CONFIRMED", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "type"], "query": [{ "key": "type", "value": "CONFIRMED" }] }
+          }
         }
+      ]
+    },
+    {
+      "name": "Project Overview - Spec Sheets (ONEMEP-15)",
+      "item": [
+        {
+          "name": "Upload spec sheet (.doc/.docx/.pdf, <=150MB)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('created', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('specSheetId', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": [] }] },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/spec-sheets", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "spec-sheets"] }
+          }
+        },
+        { "name": "List spec sheets", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/spec-sheets", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "spec-sheets"] } } },
+        { "name": "Download spec sheet", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/spec-sheets/{{specSheetId}}/download", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "spec-sheets", "{{specSheetId}}", "download"] } } },
+        { "name": "Delete spec sheet", "request": { "method": "DELETE", "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/spec-sheets/{{specSheetId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "spec-sheets", "{{specSheetId}}"] } } }
+      ]
+    },
+    {
+      "name": "Project Overview - Delivery Schedule (ONEMEP-15)",
+      "item": [
+        {
+          "name": "Create delivery item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('created', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('deliveryItemId', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"milestone\": \"Design Freeze\",\n  \"deliverable\": \"IFC drawings\",\n  \"plannedDate\": \"2026-09-01\",\n  \"status\": \"IN_PROGRESS\",\n  \"remarks\": \"Pending client inputs\"\n}" },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/delivery-schedule", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "delivery-schedule"] }
+          }
+        },
+        { "name": "List delivery schedule", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/delivery-schedule", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "delivery-schedule"] } } },
+        {
+          "name": "Update delivery item",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"milestone\": \"Design Freeze\",\n  \"deliverable\": \"IFC drawings\",\n  \"plannedDate\": \"2026-09-01\",\n  \"actualDate\": \"2026-09-05\",\n  \"status\": \"COMPLETED\"\n}" },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/delivery-schedule/{{deliveryItemId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "delivery-schedule", "{{deliveryItemId}}"] }
+          }
+        },
+        { "name": "Delete delivery item", "request": { "method": "DELETE", "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/delivery-schedule/{{deliveryItemId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "delivery-schedule", "{{deliveryItemId}}"] } } }
+      ]
+    },
+    {
+      "name": "Project Overview - Stakeholders (ONEMEP-15)",
+      "item": [
+        {
+          "name": "Add stakeholder (Project Head)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('created', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('stakeholderId', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"PROJECT_HEAD\",\n  \"name\": \"Jane Doe\",\n  \"organization\": \"Acme\",\n  \"email\": \"jane@acme.com\",\n  \"phone\": \"+65 9000 0000\"\n}" },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/stakeholders", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "stakeholders"] }
+          }
+        },
+        { "name": "List stakeholders", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/stakeholders", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "stakeholders"] } } },
+        {
+          "name": "Update stakeholder (Architect)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"ARCHITECT\",\n  \"name\": \"John Smith\",\n  \"organization\": \"DesignCo\"\n}" },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/stakeholders/{{stakeholderId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "stakeholders", "{{stakeholderId}}"] }
+          }
+        },
+        { "name": "Delete stakeholder", "request": { "method": "DELETE", "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/stakeholders/{{stakeholderId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "stakeholders", "{{stakeholderId}}"] } } }
+      ]
+    },
+    {
+      "name": "Handling Offices",
+      "item": [
+        {
+          "name": "Create handling office",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('created', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('handlingOfficeId', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Singapore HQ\"\n}" },
+            "url": { "raw": "{{baseUrl}}/handling-offices", "host": ["{{baseUrl}}"], "path": ["handling-offices"] }
+          }
+        },
+        { "name": "Active handling offices", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/handling-offices/active", "host": ["{{baseUrl}}"], "path": ["handling-offices", "active"] } } }
+      ]
+    },
+    {
+      "name": "Detailing Levels",
+      "item": [
+        {
+          "name": "Create detailing level",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('created', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('detailingLevelId', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"LOD 400\"\n}" },
+            "url": { "raw": "{{baseUrl}}/detailing-levels", "host": ["{{baseUrl}}"], "path": ["detailing-levels"] }
+          }
+        },
+        { "name": "Active detailing levels", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/detailing-levels/active", "host": ["{{baseUrl}}"], "path": ["detailing-levels", "active"] } } }
       ]
     }
   ]

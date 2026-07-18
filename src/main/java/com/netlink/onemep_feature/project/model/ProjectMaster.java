@@ -2,6 +2,8 @@ package com.netlink.onemep_feature.project.model;
 
 import com.netlink.onemep_feature.category.model.CategoryMaster;
 import com.netlink.onemep_feature.common.model.BaseEntity;
+import com.netlink.onemep_feature.detailinglevel.model.DetailingLevelMaster;
+import com.netlink.onemep_feature.handlingoffice.model.HandlingOfficeMaster;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -33,10 +35,35 @@ public class ProjectMaster extends BaseEntity {
   private CategoryMaster category;
 
   @Column(name = "lifecycle_status", nullable = false)
-  private String lifecycleStatus = "DRAFT";
+  private String lifecycleStatus = "ACTIVE";
 
   @Column(name = "priority", nullable = false)
   private String priority = "MEDIUM";
+
+  /** CONFIRMED or NON_CONFIRMED (pursuit). Non-confirmed projects use an NC-prefixed number. */
+  @Column(name = "project_type", nullable = false)
+  private String type = "NON_CONFIRMED";
+
+  /**
+   * Once a project is CONFIRMED, its type and Project ID are locked and can no longer change (the
+   * Non-confirmed → Confirmed transition is irreversible).
+   */
+  @Column(name = "type_locked", nullable = false)
+  private Boolean typeLocked = Boolean.FALSE;
+
+  @Column(name = "client")
+  private String client;
+
+  @Column(name = "location")
+  private String location;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "handling_office_id")
+  private HandlingOfficeMaster handlingOffice;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "detailing_level_id")
+  private DetailingLevelMaster detailingLevel;
 
   @Column(name = "description")
   private String description;

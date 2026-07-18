@@ -23,6 +23,12 @@ spring:
     time-zone: ${APP_TIMEZONE:Asia/Kolkata}
     default-property-inclusion: non_null
 
+  # Specs-sheet uploads (ONEMEP-15): allow files up to 150 MB.
+  servlet:
+    multipart:
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:150MB}
+      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:155MB}
+
   # SMTP for project lifecycle/priority notifications (ONEMEP-14). When MAIL_HOST is unset,
   # no JavaMailSender is created and the notification service degrades to a no-op (logs only).
   mail:
