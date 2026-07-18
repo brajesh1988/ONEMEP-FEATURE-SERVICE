@@ -1,4 +1,4 @@
-# ONEMEP-FEATURE Service
+# ONEMEP-FEATURE-SERVICE
 
 Projects and Master Data bounded context for ONE-MEP. Owns the tables under the Jira epics
 **Project** (ONEMEP-11) and **Master Data** (ONEMEP-25); deliberately separated from
