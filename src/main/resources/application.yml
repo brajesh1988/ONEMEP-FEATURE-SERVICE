@@ -1,0 +1,112 @@
+server:
+  port: ${SERVER_PORT:8086}
+  servlet:
+    context-path: /feature-service
+
+spring:
+  application:
+    name: dim-feature-service
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  cloud:
+    config:
+      enabled: ${SPRING_CLOUD_CONFIG_ENABLED:false}
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://16.192.90.23:5432/onemepdev}
+    username: ${DB_USERNAME:onemepdev_user}
+    password: ${DB_PASSWORD:OneMep@1234}
+
+  jackson:
+    time-zone: ${APP_TIMEZONE:Asia/Kolkata}
+    default-property-inclusion: non_null
+
+  # SMTP for project lifecycle/priority notifications (ONEMEP-14). When MAIL_HOST is unset,
+  # no JavaMailSender is created and the notification service degrades to a no-op (logs only).
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:true}
+
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: onemep_dev
+        jdbc:
+          time_zone: ${APP_TIMEZONE:Asia/Kolkata}
+    hibernate:
+      ddl-auto: validate           # Flyway manages schema; Hibernate only validates
+    show-sql: false
+    open-in-view: false
+
+  # This service shares the onemep_dev schema with the identity service but keeps its
+  # OWN Flyway history table (flyway_feature_history) so the two services' migration
+  # timelines never collide. Feature tables are created in onemep_dev alongside identity's.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    schemas: onemep_dev
+    default-schema: onemep_dev
+    table: flyway_feature_history
+    validate-on-migrate: true
+    # onemep_dev already holds the identity service's tables, so this (empty) history table
+    # must be baselined. Baseline at 0 — NOT the default 1 — so our V1 migration still runs.
+    baseline-on-migrate: true
+    baseline-version: 0
+
+  mvc:
+    problemdetails:
+      enabled: false               # Errors flow through GlobalExceptionHandler's ApiResponse envelope
+  threads:
+    virtual:
+      enabled: true                # Java 21 virtual threads for the MVC pool
+
+eureka:
+  instance:
+    instance-id: ${spring.application.name}:${server.port}
+    prefer-ip-address: true
+    ip-address: ${EUREKA_INSTANCE_IP:127.0.0.1}
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+
+# RS256 public key issued by the identity service. Used to validate the bearer JWT
+# forwarded by the gateway (defence in depth — the service never trusts the network alone).
+jwt:
+  public-key: ${JWT_PUBLIC_KEY:./keys/jwt-public.pem}
+
+# Project change notifications (ONEMEP-14). Disable entirely with NOTIFICATIONS_ENABLED=false.
+feature:
+  notifications:
+    enabled: ${NOTIFICATIONS_ENABLED:true}
+    from: ${NOTIFICATIONS_FROM:no-reply@onemep.local}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,refresh
+  endpoint:
+    health:
+      show-details: when-authorized
+  health:
+    mail:
+      enabled: false               # Don't fail health if SMTP is unreachable; mail is best-effort
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: false                 # Swagger UI served via Gateway aggregation

@@ -1,0 +1,88 @@
+# ===== Build output (Maven) =====
+target/
+.mvn/wrapper/maven-wrapper.jar
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+HELP.md
+
+# ===== Java / runtime =====
+*.class
+*.jar
+*.war
+*.ear
+*.log
+logs/
+*.pid
+hs_err_pid*
+replay_pid*
+
+# ===== Spring Boot local config / secrets =====
+application-local.yml
+application-local.yaml
+application-local.properties
+.env
+.env.*
+!.env.example
+
+# JWT / signing keys and certs (never commit private keys)
+keys/
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+
+# ===== IDE: IntelliJ IDEA =====
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# ===== IDE: Eclipse / STS =====
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# ===== IDE: VS Code =====
+.vscode/
+
+# ===== NetBeans =====
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# ===== OS files =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===== Claude Code =====
+.claude/settings.local.json
+
+# ===== Docker =====
+docker-compose.override.yml
+
+# ===== Test reports =====
+surefire-reports/
+failsafe-reports/
+jacoco.exec
+jacoco/
+
+# ===== Protobuf generated sources =====
+target/generated-sources/protobuf/
+
+# ===== Spring Boot / Actuator =====
+heapdump
+threaddump

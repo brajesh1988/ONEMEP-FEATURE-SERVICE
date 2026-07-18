@@ -1,0 +1,13 @@
+package com.netlink.onemep_feature.common.dto;
+
+public enum ErrorCode {
+  VALIDATION_FAILED,
+  RESOURCE_NOT_FOUND,
+  RESOURCE_IN_USE,
+  DUPLICATE_RESOURCE,
+  METHOD_NOT_ALLOWED,
+  ACCESS_DENIED,
+  UNAUTHORIZED,
+  TOKEN_INVALID,
+  INTERNAL_ERROR
+}
