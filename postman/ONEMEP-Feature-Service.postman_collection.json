@@ -1,0 +1,405 @@
+{
+  "info": {
+    "name": "ONEMEP Feature Service",
+    "_postman_id": "6f2a1c4e-8b1d-4d2a-9c3e-featureservice01",
+    "description": "End-to-end collection for ONEMEP-FEATURE-SERVICE (Projects + Master Data) via the API Gateway.\n\nHOW TO USE\n1. Select the environment (baseUrl / email / password) or use the collection variable defaults.\n2. Run **Auth > Login** first — its test script stores `accessToken` (and `refreshToken`) as collection variables.\n3. All other requests inherit Bearer `{{accessToken}}` automatically.\n4. Create requests store the returned id into variables (e.g. `categoryId`, `projectId`) so the Get/Update/Patch requests work without editing.\n\nAll paths go through the gateway WITHOUT the `/feature-service` context path (the gateway rewrites it).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://16.192.90.23:9000" },
+    { "key": "email", "value": "user@onemep.com" },
+    { "key": "password", "value": "ChangeMe@123" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "categoryId", "value": "1" },
+    { "key": "tierId", "value": "1" },
+    { "key": "teamRoleId", "value": "1" },
+    { "key": "unitId", "value": "1" },
+    { "key": "technicalId", "value": "1" },
+    { "key": "projectId", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('login ok', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const d = b.data || {};",
+                  "if (d.accessToken) { pm.collectionVariables.set('accessToken', d.accessToken); }",
+                  "if (d.refreshToken) { pm.collectionVariables.set('refreshToken', d.refreshToken); }",
+                  "if (d.twoFactorRequired) { console.warn('2FA required — complete /auth/2fa flow to obtain a token'); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = (pm.response.json().data) || {};",
+                  "if (d.accessToken) pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "if (d.refreshToken) pm.collectionVariables.set('refreshToken', d.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/auth/refresh", "host": ["{{baseUrl}}"], "path": ["auth", "refresh"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "Create category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('created', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('categoryId', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"HVAC\",\n  \"prefix\": \"HVAC\",\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/categories", "host": ["{{baseUrl}}"], "path": ["categories"] }
+          }
+        },
+        {
+          "name": "List categories (paginated)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": {\n    \"pageNumber\": 0,\n    \"pageSize\": 20,\n    \"sortBy\": \"name\",\n    \"sortDirection\": \"ASC\"\n  },\n  \"filters\": {\n    \"search\": \"\"\n  }\n}" },
+            "url": { "raw": "{{baseUrl}}/categories/list", "host": ["{{baseUrl}}"], "path": ["categories", "list"] }
+          }
+        },
+        {
+          "name": "Active categories",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/categories/active", "host": ["{{baseUrl}}"], "path": ["categories", "active"] }
+          }
+        },
+        {
+          "name": "Get category by id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["categories", "{{categoryId}}"] }
+          }
+        },
+        {
+          "name": "Update category",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"HVAC\",\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/categories/{{categoryId}}", "host": ["{{baseUrl}}"], "path": ["categories", "{{categoryId}}"] }
+          }
+        },
+        {
+          "name": "Patch category status",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/categories/{{categoryId}}/status?active=true", "host": ["{{baseUrl}}"], "path": ["categories", "{{categoryId}}", "status"], "query": [{ "key": "active", "value": "true" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tiers",
+      "item": [
+        {
+          "name": "Create tier",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('tierId', d.id);"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Engineering\",\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/tiers", "host": ["{{baseUrl}}"], "path": ["tiers"] }
+          }
+        },
+        {
+          "name": "List tiers (paginated)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20, \"sortBy\": \"name\", \"sortDirection\": \"ASC\" },\n  \"filters\": {}\n}" },
+            "url": { "raw": "{{baseUrl}}/tiers/list", "host": ["{{baseUrl}}"], "path": ["tiers", "list"] }
+          }
+        },
+        { "name": "Active tiers", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/tiers/active", "host": ["{{baseUrl}}"], "path": ["tiers", "active"] } } },
+        { "name": "Get tier by id", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/tiers/{{tierId}}", "host": ["{{baseUrl}}"], "path": ["tiers", "{{tierId}}"] } } },
+        {
+          "name": "Update tier",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Engineering\",\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/tiers/{{tierId}}", "host": ["{{baseUrl}}"], "path": ["tiers", "{{tierId}}"] }
+          }
+        },
+        {
+          "name": "Patch tier status",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/tiers/{{tierId}}/status?active=true", "host": ["{{baseUrl}}"], "path": ["tiers", "{{tierId}}", "status"], "query": [{ "key": "active", "value": "true" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Team Roles",
+      "item": [
+        {
+          "name": "Create team role",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('teamRoleId', d.id);"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Design Engineer\",\n  \"tierId\": {{tierId}},\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/team-roles", "host": ["{{baseUrl}}"], "path": ["team-roles"] }
+          }
+        },
+        {
+          "name": "List team roles (paginated)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20, \"sortBy\": \"name\", \"sortDirection\": \"ASC\" },\n  \"filters\": {}\n}" },
+            "url": { "raw": "{{baseUrl}}/team-roles/list", "host": ["{{baseUrl}}"], "path": ["team-roles", "list"] }
+          }
+        },
+        { "name": "Active team roles", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/team-roles/active", "host": ["{{baseUrl}}"], "path": ["team-roles", "active"] } } },
+        { "name": "Get team role by id", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/team-roles/{{teamRoleId}}", "host": ["{{baseUrl}}"], "path": ["team-roles", "{{teamRoleId}}"] } } },
+        {
+          "name": "Update team role",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Senior Design Engineer\",\n  \"tierId\": {{tierId}},\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/team-roles/{{teamRoleId}}", "host": ["{{baseUrl}}"], "path": ["team-roles", "{{teamRoleId}}"] }
+          }
+        },
+        {
+          "name": "Patch team role status",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/team-roles/{{teamRoleId}}/status?active=true", "host": ["{{baseUrl}}"], "path": ["team-roles", "{{teamRoleId}}", "status"], "query": [{ "key": "active", "value": "true" }] }
+          }
+        },
+        {
+          "name": "Delete team role",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/team-roles/{{teamRoleId}}", "host": ["{{baseUrl}}"], "path": ["team-roles", "{{teamRoleId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Units",
+      "item": [
+        {
+          "name": "Create unit",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('unitId', d.id);"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Cubic Feet per Minute\",\n  \"symbol\": \"CFM\",\n  \"acceptedInputType\": \"DECIMAL\",\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/units", "host": ["{{baseUrl}}"], "path": ["units"] }
+          }
+        },
+        {
+          "name": "List units (paginated)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20, \"sortBy\": \"name\", \"sortDirection\": \"ASC\" },\n  \"filters\": {}\n}" },
+            "url": { "raw": "{{baseUrl}}/units/list", "host": ["{{baseUrl}}"], "path": ["units", "list"] }
+          }
+        },
+        { "name": "Active units", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/units/active", "host": ["{{baseUrl}}"], "path": ["units", "active"] } } },
+        { "name": "Get unit by id", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/units/{{unitId}}", "host": ["{{baseUrl}}"], "path": ["units", "{{unitId}}"] } } },
+        {
+          "name": "Update unit",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Cubic Feet per Minute\",\n  \"symbol\": \"CFM\",\n  \"acceptedInputType\": \"DECIMAL\",\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/units/{{unitId}}", "host": ["{{baseUrl}}"], "path": ["units", "{{unitId}}"] }
+          }
+        },
+        {
+          "name": "Patch unit status",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/units/{{unitId}}/status?active=true", "host": ["{{baseUrl}}"], "path": ["units", "{{unitId}}", "status"], "query": [{ "key": "active", "value": "true" }] }
+          }
+        },
+        {
+          "name": "Delete unit",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/units/{{unitId}}", "host": ["{{baseUrl}}"], "path": ["units", "{{unitId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Technical Master",
+      "item": [
+        {
+          "name": "Create technical master",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": ["const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('technicalId', d.id);"] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Air Flow Rate\",\n  \"unitId\": {{unitId}},\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/technical-master", "host": ["{{baseUrl}}"], "path": ["technical-master"] }
+          }
+        },
+        {
+          "name": "List technical master (paginated)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20, \"sortBy\": \"name\", \"sortDirection\": \"ASC\" },\n  \"filters\": {}\n}" },
+            "url": { "raw": "{{baseUrl}}/technical-master/list", "host": ["{{baseUrl}}"], "path": ["technical-master", "list"] }
+          }
+        },
+        { "name": "Get technical master by id", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/technical-master/{{technicalId}}", "host": ["{{baseUrl}}"], "path": ["technical-master", "{{technicalId}}"] } } },
+        {
+          "name": "Update technical master",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Air Flow Rate\",\n  \"unitId\": {{unitId}},\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/technical-master/{{technicalId}}", "host": ["{{baseUrl}}"], "path": ["technical-master", "{{technicalId}}"] }
+          }
+        },
+        {
+          "name": "Delete technical master",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/technical-master/{{technicalId}}", "host": ["{{baseUrl}}"], "path": ["technical-master", "{{technicalId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Projects",
+      "item": [
+        {
+          "name": "Create project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('created', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('projectId', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant\",\n  \"categoryId\": {{categoryId}},\n  \"priority\": \"HIGH\",\n  \"description\": \"HVAC discipline scope: central chiller plant sizing and CHW distribution.\",\n  \"leadUserIds\": [1],\n  \"members\": [\n    { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} }\n  ]\n}" },
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] }
+          }
+        },
+        {
+          "name": "List projects (paginated + filters)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": {\n    \"pageNumber\": 0,\n    \"pageSize\": 20,\n    \"sortBy\": \"name\",\n    \"sortDirection\": \"ASC\"\n  },\n  \"filters\": {\n    \"search\": \"\",\n    \"priority\": \"\",\n    \"lifecycleStatus\": \"\",\n    \"active\": true\n  }\n}" },
+            "url": { "raw": "{{baseUrl}}/projects/list", "host": ["{{baseUrl}}"], "path": ["projects", "list"] }
+          }
+        },
+        { "name": "Get project by id", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/projects/{{projectId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}"] } } },
+        { "name": "Get project overview", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/overview", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "overview"] } } },
+        {
+          "name": "Update project",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant (Rev B)\",\n  \"priority\": \"CRITICAL\",\n  \"lifecycleStatus\": \"ACTIVE\",\n  \"description\": \"Updated scope after design review.\",\n  \"leadUserIds\": [1],\n  \"members\": [ { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} } ]\n}" },
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}"] }
+          }
+        },
+        {
+          "name": "Patch project status",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/status?active=true", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "status"], "query": [{ "key": "active", "value": "true" }] }
+          }
+        },
+        {
+          "name": "Patch project lifecycle",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/lifecycle?lifecycleStatus=ACTIVE", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "lifecycle"], "query": [{ "key": "lifecycleStatus", "value": "ACTIVE" }] }
+          }
+        },
+        {
+          "name": "Patch project priority",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/projects/{{projectId}}/priority?priority=CRITICAL", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}", "priority"], "query": [{ "key": "priority", "value": "CRITICAL" }] }
+          }
+        }
+      ]
+    }
+  ]
+}
