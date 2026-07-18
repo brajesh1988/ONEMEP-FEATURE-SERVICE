@@ -5,7 +5,7 @@ server:
 
 spring:
   application:
-    name: dim-feature-service
+    name: onemep-feature-service
 
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}

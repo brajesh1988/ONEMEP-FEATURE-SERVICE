@@ -8,7 +8,7 @@ Projects and Master Data bounded context for ONE-MEP. Owns the tables under the 
 |---|---|
 | Port | `8086` |
 | Context path | `/feature-service` |
-| Eureka app name | `dim-feature-service` |
+| Eureka app name | `onemep-feature-service` |
 | DB schema | `onemep_dev` (shared with identity; **own** Flyway history table `flyway_feature_history`) |
 | Auth | Stateless RS256 JWT validation (identity's **public** key only) |
 
