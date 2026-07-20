@@ -59,16 +59,17 @@ class FeatureFlowIT {
 
   @Test
   void projectEpicFlow_typeIdScheme_confirm_lifecycleReason_andGuards() throws Exception {
+    // V4 seeds categories 1-10; create a distinct one so the sequence continues at CAT-00011.
     long categoryId =
         idOf(
             perform(
                     post("/categories")
                         .content(
-                            "{\"name\":\"Infrastructure\",\"prefix\":\"inf\",\"seriesCode\":6}"))
+                            "{\"name\":\"MEP Discipline\",\"prefix\":\"mep\",\"seriesCode\":99}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.prefix").value("INF"))
-                .andExpect(jsonPath("$.data.seriesCode").value(6))
-                .andExpect(jsonPath("$.data.categoryNumber").value("CAT-00001"))
+                .andExpect(jsonPath("$.data.prefix").value("MEP"))
+                .andExpect(jsonPath("$.data.seriesCode").value(99))
+                .andExpect(jsonPath("$.data.categoryNumber").value("CAT-00011"))
                 .andReturn());
 
     long tierId =
@@ -133,14 +134,14 @@ class FeatureFlowIT {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
 
-    // Confirm the project → Project ID reassigned from series 6, type locked.
+    // Confirm the project → Project ID reassigned from series 99, type locked.
     perform(patch("/projects/" + projectId + "/type").param("type", "CONFIRMED"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.type").value("CONFIRMED"))
         .andExpect(jsonPath("$.data.typeLocked").value(true))
         .andExpect(
             jsonPath("$.data.projectNumber")
-                .value(org.hamcrest.Matchers.matchesPattern("6\\d{4}")));
+                .value(org.hamcrest.Matchers.matchesPattern("99\\d{4}")));
 
     // Confirmed project cannot revert to Non-confirmed.
     perform(patch("/projects/" + projectId + "/type").param("type", "NON_CONFIRMED"))

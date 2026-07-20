@@ -1,43 +1,37 @@
 -- ============================================================================
--- V4 - Standard Category → series-code mapping (Jira ONEMEP-12/13/14 rule)
+-- V4 - Seed the standard project Categories with their series codes
+--      (Jira ONEMEP-12/13/14 Project ID rule).
 --
--- Sets the numeric series_code used to build confirmed Project IDs
--- (e.g. Hotel series 4 → project number 40012). This ONLY updates categories
--- that already exist (matched by name, case-insensitive, dash/spelling variants);
--- it never inserts new categories. Missing categories are a no-op.
+-- series_code is the numeric prefix used to build confirmed Project IDs
+-- (e.g. Hotel series 4 → project number 40012). Non-Confirmed is NOT a
+-- category — it is the NC project *type*, handled in the service layer.
 --
--- Non-Confirmed is intentionally absent — it is the NC project *type*, not a
--- category, and is handled in the service layer.
+-- Wipes any existing categories first, then seeds the standard set. The
+-- identity sequence is realigned afterwards so service-created categories
+-- continue from CAT-00011 onwards.
+--
+-- NOTE: this DELETE only succeeds when no project_master rows reference a
+-- category (FK fk_project_category). It is intended to run on a fresh setup
+-- before any projects exist.
 -- ============================================================================
 
-UPDATE category_master SET series_code = 1
-    WHERE LOWER(name) = 'commercial';
+DELETE FROM category_master;
 
-UPDATE category_master SET series_code = 2
-    WHERE LOWER(name) IN ('it-data centre', 'it–data centre', 'it data centre',
-                          'it-data center', 'it–data center', 'it data center',
-                          'it - data centre', 'it – data centre');
+INSERT INTO category_master (id, category_number, name, prefix, is_active, series_code, created_date)
+VALUES
+    (1,  'CAT-00001', 'Commercial',     'COM',  TRUE, 1,  now()),
+    (2,  'CAT-00002', 'IT-Data Centre', 'ITDC', TRUE, 2,  now()),
+    (3,  'CAT-00003', 'Hospital',       'HOSP', TRUE, 3,  now()),
+    (4,  'CAT-00004', 'Hotel',          'HTL',  TRUE, 4,  now()),
+    (5,  'CAT-00005', 'Residential',    'RES',  TRUE, 5,  now()),
+    (6,  'CAT-00006', 'Infrastructure', 'INF',  TRUE, 6,  now()),
+    (7,  'CAT-00007', 'Industrial',     'IND',  TRUE, 7,  now()),
+    (8,  'CAT-00008', 'Educational',    'EDU',  TRUE, 8,  now()),
+    (9,  'CAT-00009', 'Fitouts',        'FIT',  TRUE, 9,  now()),
+    (10, 'CAT-00010', 'Mixed-Use',      'MIX',  TRUE, 10, now());
 
-UPDATE category_master SET series_code = 3
-    WHERE LOWER(name) = 'hospital';
-
-UPDATE category_master SET series_code = 4
-    WHERE LOWER(name) = 'hotel';
-
-UPDATE category_master SET series_code = 5
-    WHERE LOWER(name) = 'residential';
-
-UPDATE category_master SET series_code = 6
-    WHERE LOWER(name) = 'infrastructure';
-
-UPDATE category_master SET series_code = 7
-    WHERE LOWER(name) = 'industrial';
-
-UPDATE category_master SET series_code = 8
-    WHERE LOWER(name) = 'educational';
-
-UPDATE category_master SET series_code = 9
-    WHERE LOWER(name) = 'fitouts';
-
-UPDATE category_master SET series_code = 10
-    WHERE LOWER(name) IN ('mixed-use', 'mixed–use', 'mixed use');
+-- Realign the IDENTITY sequence so the next generated id is MAX(id)+1.
+SELECT setval(
+    pg_get_serial_sequence('category_master', 'id'),
+    GREATEST((SELECT MAX(id) FROM category_master), 1)
+);
