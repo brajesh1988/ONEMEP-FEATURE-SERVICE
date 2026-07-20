@@ -539,7 +539,33 @@
             "url": { "raw": "{{baseUrl}}/handling-offices", "host": ["{{baseUrl}}"], "path": ["handling-offices"] }
           }
         },
-        { "name": "Active handling offices", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/handling-offices/active", "host": ["{{baseUrl}}"], "path": ["handling-offices", "active"] } } }
+        {
+          "name": "List handling offices (paginated)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": {\n    \"pageNumber\": 0,\n    \"pageSize\": 20,\n    \"sortBy\": \"name\",\n    \"sortDirection\": \"ASC\"\n  },\n  \"filters\": {\n    \"search\": \"\"\n  }\n}" },
+            "url": { "raw": "{{baseUrl}}/handling-offices/list", "host": ["{{baseUrl}}"], "path": ["handling-offices", "list"] }
+          }
+        },
+        { "name": "Active handling offices", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/handling-offices/active", "host": ["{{baseUrl}}"], "path": ["handling-offices", "active"] } } },
+        { "name": "Get handling office by id", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/handling-offices/{{handlingOfficeId}}", "host": ["{{baseUrl}}"], "path": ["handling-offices", "{{handlingOfficeId}}"] } } },
+        {
+          "name": "Update handling office",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Singapore HQ (Renamed)\",\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/handling-offices/{{handlingOfficeId}}", "host": ["{{baseUrl}}"], "path": ["handling-offices", "{{handlingOfficeId}}"] }
+          }
+        },
+        {
+          "name": "Patch handling office status",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/handling-offices/{{handlingOfficeId}}/status?active=true", "host": ["{{baseUrl}}"], "path": ["handling-offices", "{{handlingOfficeId}}", "status"], "query": [{ "key": "active", "value": "true" }] }
+          }
+        }
       ]
     },
     {
@@ -566,7 +592,33 @@
             "url": { "raw": "{{baseUrl}}/detailing-levels", "host": ["{{baseUrl}}"], "path": ["detailing-levels"] }
           }
         },
-        { "name": "Active detailing levels", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/detailing-levels/active", "host": ["{{baseUrl}}"], "path": ["detailing-levels", "active"] } } }
+        {
+          "name": "List detailing levels (paginated)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"paginationAndSorting\": {\n    \"pageNumber\": 0,\n    \"pageSize\": 20,\n    \"sortBy\": \"name\",\n    \"sortDirection\": \"ASC\"\n  },\n  \"filters\": {\n    \"search\": \"\"\n  }\n}" },
+            "url": { "raw": "{{baseUrl}}/detailing-levels/list", "host": ["{{baseUrl}}"], "path": ["detailing-levels", "list"] }
+          }
+        },
+        { "name": "Active detailing levels", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/detailing-levels/active", "host": ["{{baseUrl}}"], "path": ["detailing-levels", "active"] } } },
+        { "name": "Get detailing level by id", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/detailing-levels/{{detailingLevelId}}", "host": ["{{baseUrl}}"], "path": ["detailing-levels", "{{detailingLevelId}}"] } } },
+        {
+          "name": "Update detailing level",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"LOD 500\",\n  \"active\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/detailing-levels/{{detailingLevelId}}", "host": ["{{baseUrl}}"], "path": ["detailing-levels", "{{detailingLevelId}}"] }
+          }
+        },
+        {
+          "name": "Patch detailing level status",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{baseUrl}}/detailing-levels/{{detailingLevelId}}/status?active=true", "host": ["{{baseUrl}}"], "path": ["detailing-levels", "{{detailingLevelId}}", "status"], "query": [{ "key": "active", "value": "true" }] }
+          }
+        }
       ]
     }
   ]
