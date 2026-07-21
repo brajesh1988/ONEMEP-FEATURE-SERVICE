@@ -11,11 +11,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.netlink.onemep_feature.user.client.UserDirectoryClient;
+import com.netlink.onemep_feature.user.dto.UserSummary;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -36,6 +46,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @AutoConfigureMockMvc
 @Testcontainers
 @Tag("integration")
+@Import(FeatureFlowIT.StubUserDirectoryConfig.class)
 class FeatureFlowIT {
 
   @Container
@@ -52,6 +63,41 @@ class FeatureFlowIT {
     registry.add("spring.cloud.config.enabled", () -> "false");
     registry.add("spring.cloud.discovery.enabled", () -> "false");
     registry.add("feature.notifications.enabled", () -> "false");
+    // No real identity gRPC server in this test; the stub client below replaces it.
+    registry.add("grpc.client.identity-service.address", () -> "static://localhost:1");
+  }
+
+  /**
+   * Replaces the gRPC-backed client with an in-memory stub so the flow can exercise user-id
+   * enrichment (MEP Team / activity / leads) without a live identity service.
+   */
+  @TestConfiguration
+  static class StubUserDirectoryConfig {
+
+    @Bean
+    @Primary
+    UserDirectoryClient stubUserDirectoryClient() {
+      return new UserDirectoryClient() {
+        @Override
+        public Map<Long, UserSummary> resolve(Collection<Long> ids) {
+          Map<Long, UserSummary> result = new HashMap<>();
+          if (ids != null) {
+            ids.stream()
+                .filter(id -> id != null)
+                .forEach(
+                    id ->
+                        result.put(
+                            id, new UserSummary(id, "User " + id, "user" + id + "@onemep.local")));
+          }
+          return result;
+        }
+
+        @Override
+        public Set<Long> findMissing(Collection<Long> ids) {
+          return Set.of();
+        }
+      };
+    }
   }
 
   @Autowired private MockMvc mockMvc;
@@ -204,14 +250,21 @@ class FeatureFlowIT {
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.data.role").value("PROJECT_HEAD"));
 
-    // Overview aggregates every section + the activity log.
+    // Overview aggregates every section + the activity log, with user ids enriched to names.
     perform(get("/projects/" + projectId + "/overview"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.project.lifecycleStatus").value("ON_HOLD"))
         .andExpect(jsonPath("$.data.specSheets[0].fileName").value("design-basis.pdf"))
         .andExpect(jsonPath("$.data.deliverySchedule[0].milestone").value("Design Freeze"))
         .andExpect(jsonPath("$.data.stakeholders[0].name").value("Jane Doe"))
-        .andExpect(jsonPath("$.data.activity").isNotEmpty());
+        .andExpect(jsonPath("$.data.activity").isNotEmpty())
+        // MEP Team member id 2 → resolved display name.
+        .andExpect(jsonPath("$.data.project.members[0].userId").value(2))
+        .andExpect(jsonPath("$.data.project.members[0].userName").value("User 2"))
+        // Lead id 1 → resolved display name.
+        .andExpect(jsonPath("$.data.project.leads[0].userName").value("User 1"))
+        // Activity actor (subject "1") → resolved display name.
+        .andExpect(jsonPath("$.data.activity[0].performedByName").value("User 1"));
 
     // Structured Type filter returns the confirmed project.
     perform(post("/projects/list").content("{\"filters\":{\"type\":\"CONFIRMED\"}}"))

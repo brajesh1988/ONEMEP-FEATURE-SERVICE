@@ -2,8 +2,8 @@ package com.netlink.onemep_feature.notification;
 
 import com.netlink.onemep_feature.common.util.DateUtils;
 import com.netlink.onemep_feature.project.model.ProjectMaster;
-import com.netlink.onemep_feature.user.model.UserAccountRef;
-import com.netlink.onemep_feature.user.repo.UserAccountRefRepo;
+import com.netlink.onemep_feature.user.client.UserDirectoryClient;
+import com.netlink.onemep_feature.user.dto.UserSummary;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -25,17 +25,17 @@ import org.springframework.stereotype.Service;
 public class EmailProjectNotificationService implements ProjectNotificationService {
 
   private final ObjectProvider<JavaMailSender> mailSenderProvider;
-  private final UserAccountRefRepo userRepo;
+  private final UserDirectoryClient userDirectory;
   private final NotificationProperties properties;
   private final String mailHost;
 
   public EmailProjectNotificationService(
       ObjectProvider<JavaMailSender> mailSenderProvider,
-      UserAccountRefRepo userRepo,
+      UserDirectoryClient userDirectory,
       NotificationProperties properties,
       @Value("${spring.mail.host:}") String mailHost) {
     this.mailSenderProvider = mailSenderProvider;
-    this.userRepo = userRepo;
+    this.userDirectory = userDirectory;
     this.properties = properties;
     this.mailHost = mailHost;
   }
@@ -100,8 +100,8 @@ public class EmailProjectNotificationService implements ProjectNotificationServi
       return;
     }
     String[] recipients =
-        userRepo.findByIdIn(leadUserIds).stream()
-            .map(UserAccountRef::getEmail)
+        userDirectory.resolve(leadUserIds).values().stream()
+            .map(UserSummary::email)
             .filter(email -> email != null && !email.isBlank())
             .distinct()
             .toArray(String[]::new);

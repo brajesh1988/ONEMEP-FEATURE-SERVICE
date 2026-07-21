@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,11 +32,11 @@ import com.netlink.onemep_feature.project.repo.ProjectStakeholderRepo;
 import com.netlink.onemep_feature.teamrole.model.TeamRoleMaster;
 import com.netlink.onemep_feature.teamrole.repo.TeamRoleRepo;
 import com.netlink.onemep_feature.tier.model.TierMaster;
-import com.netlink.onemep_feature.user.model.UserAccountRef;
-import com.netlink.onemep_feature.user.repo.UserAccountRefRepo;
+import com.netlink.onemep_feature.user.client.UserDirectoryClient;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,7 +62,7 @@ class ProjectServiceImplTest {
   @Mock private TeamRoleRepo teamRoleRepo;
   @Mock private HandlingOfficeRepo handlingOfficeRepo;
   @Mock private DetailingLevelRepo detailingLevelRepo;
-  @Mock private UserAccountRefRepo userRepo;
+  @Mock private UserDirectoryClient userDirectory;
   @Mock private ProjectNotificationService notificationService;
 
   private ProjectServiceImpl service;
@@ -83,7 +82,7 @@ class ProjectServiceImplTest {
             teamRoleRepo,
             handlingOfficeRepo,
             detailingLevelRepo,
-            userRepo,
+            userDirectory,
             notificationService,
             new ApiResponseAdaptor());
   }
@@ -91,7 +90,6 @@ class ProjectServiceImplTest {
   @Test
   void create_nonConfirmed_generatesNcNumber_defaultsLifecycleActive() {
     CategoryMaster category = category(10L, "INF", "Infrastructure", 6);
-    List<UserAccountRef> refs = List.of(userRef(1L), userRef(2L), userRef(3L));
     when(projectRepo.findByNameIgnoreCase("Apollo")).thenReturn(Optional.empty());
     when(categoryRepo.findById(10L)).thenReturn(Optional.of(category));
     when(projectRepo.saveAndFlush(any(ProjectMaster.class)))
@@ -102,7 +100,7 @@ class ProjectServiceImplTest {
               return p;
             });
     when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
-    when(userRepo.findByIdIn(any())).thenReturn(refs);
+    when(userDirectory.findMissing(any())).thenReturn(Set.of());
     when(teamRoleRepo.findById(7L)).thenReturn(Optional.of(teamRole(7L)));
     when(leadRepo.findByProject_Id(100L)).thenReturn(List.of(leadMapping(1L), leadMapping(3L)));
     when(memberRepo.findByProject_Id(100L)).thenReturn(List.of());
@@ -200,7 +198,7 @@ class ProjectServiceImplTest {
               return p;
             });
     when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
-    when(userRepo.findByIdIn(any())).thenReturn(List.of());
+    when(userDirectory.findMissing(any())).thenReturn(Set.of(999999L));
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
@@ -400,11 +398,5 @@ class ProjectServiceImplTest {
     ProjectLeadMapping m = new ProjectLeadMapping();
     m.setUserId(userId);
     return m;
-  }
-
-  private static UserAccountRef userRef(long id) {
-    UserAccountRef ref = mock(UserAccountRef.class);
-    when(ref.getId()).thenReturn(id);
-    return ref;
   }
 }

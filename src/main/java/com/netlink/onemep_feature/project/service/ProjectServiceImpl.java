@@ -35,8 +35,8 @@ import com.netlink.onemep_feature.project.repo.ProjectSpecSheetRepo;
 import com.netlink.onemep_feature.project.repo.ProjectStakeholderRepo;
 import com.netlink.onemep_feature.teamrole.model.TeamRoleMaster;
 import com.netlink.onemep_feature.teamrole.repo.TeamRoleRepo;
-import com.netlink.onemep_feature.user.model.UserAccountRef;
-import com.netlink.onemep_feature.user.repo.UserAccountRefRepo;
+import com.netlink.onemep_feature.user.client.UserDirectoryClient;
+import com.netlink.onemep_feature.user.dto.UserSummary;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -47,7 +47,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -89,7 +88,7 @@ public class ProjectServiceImpl implements ProjectService {
   private final TeamRoleRepo teamRoleRepo;
   private final HandlingOfficeRepo handlingOfficeRepo;
   private final DetailingLevelRepo detailingLevelRepo;
-  private final UserAccountRefRepo userRepo;
+  private final UserDirectoryClient userDirectory;
   private final ProjectNotificationService notificationService;
   private final ApiResponseAdaptor apiResponseAdaptor;
 
@@ -173,8 +172,16 @@ public class ProjectServiceImpl implements ProjectService {
         stakeholderRepo.findByProject_IdOrderByRoleAscNameAsc(id).stream()
             .map(this::toStakeholderResponse)
             .toList();
+    List<ProjectActivityLog> activityLogs =
+        activityRepo.findByProject_IdOrderByCreatedDateDescIdDesc(id);
+    Map<Long, UserSummary> activityActors =
+        userDirectory.resolve(
+            activityLogs.stream()
+                .map(ProjectActivityLog::getCreatedBy)
+                .filter(Objects::nonNull)
+                .toList());
     List<ProjectDto.ActivityItem> activity =
-        activityRepo.findByProject_IdOrderByCreatedDateDescIdDesc(id).stream()
+        activityLogs.stream()
             .map(
                 a ->
                     new ProjectDto.ActivityItem(
@@ -182,6 +189,7 @@ public class ProjectServiceImpl implements ProjectService {
                         a.getDetail(),
                         a.getReason(),
                         a.getCreatedBy(),
+                        displayName(activityActors, a.getCreatedBy()),
                         a.getCreatedDate()))
             .toList();
     return apiResponseAdaptor.success(
@@ -463,15 +471,17 @@ public class ProjectServiceImpl implements ProjectService {
     if (userIds == null || userIds.isEmpty()) {
       return;
     }
-    Set<Long> found =
-        userRepo.findByIdIn(userIds).stream()
-            .map(UserAccountRef::getId)
-            .collect(Collectors.toSet());
-    Set<Long> missing = new TreeSet<>(userIds);
-    missing.removeAll(found);
+    Set<Long> missing = userDirectory.findMissing(userIds);
     if (!missing.isEmpty()) {
-      throw new ResourceNotFoundException("User(s) not found: " + missing);
+      throw new ResourceNotFoundException("User(s) not found: " + new TreeSet<>(missing));
     }
+  }
+
+  private static String displayName(Map<Long, UserSummary> users, Long userId) {
+    if (userId == null) {
+      return null;
+    }
+    return users.getOrDefault(userId, UserSummary.unknown(userId)).displayName();
   }
 
   private List<Long> currentLeadUserIds(Long projectId) {
@@ -704,12 +714,32 @@ public class ProjectServiceImpl implements ProjectService {
             .map(ProjectLeadMapping::getUserId)
             .filter(Objects::nonNull)
             .toList();
+    List<ProjectMemberMapping> memberEntities = memberRepo.findByProject_Id(p.getId());
+
+    Set<Long> idsToResolve = new LinkedHashSet<>(leadIds);
+    memberEntities.stream()
+        .map(ProjectMemberMapping::getUserId)
+        .filter(Objects::nonNull)
+        .forEach(idsToResolve::add);
+    if (p.getCreatedBy() != null) {
+      idsToResolve.add(p.getCreatedBy());
+    }
+    if (p.getUpdatedBy() != null) {
+      idsToResolve.add(p.getUpdatedBy());
+    }
+    Map<Long, UserSummary> users = userDirectory.resolve(idsToResolve);
+
+    List<ProjectDto.UserRef> leads =
+        leadIds.stream().map(uid -> new ProjectDto.UserRef(uid, displayName(users, uid))).toList();
     List<ProjectDto.MemberResponse> members =
-        memberRepo.findByProject_Id(p.getId()).stream()
+        memberEntities.stream()
             .map(
                 m ->
                     new ProjectDto.MemberResponse(
-                        m.getUserId(), m.getTeamRole().getId(), m.getTeamRole().getName()))
+                        m.getUserId(),
+                        displayName(users, m.getUserId()),
+                        m.getTeamRole().getId(),
+                        m.getTeamRole().getName()))
             .toList();
     CategoryMaster category = p.getCategory();
     HandlingOfficeMaster office = p.getHandlingOffice();
@@ -735,10 +765,13 @@ public class ProjectServiceImpl implements ProjectService {
         p.getDescription(),
         p.getActive(),
         leadIds,
+        leads,
         members,
         p.getCreatedBy(),
+        displayName(users, p.getCreatedBy()),
         p.getCreatedDate(),
         p.getUpdatedBy(),
+        displayName(users, p.getUpdatedBy()),
         p.getUpdatedDate());
   }
 }
