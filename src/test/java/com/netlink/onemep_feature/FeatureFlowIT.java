@@ -128,7 +128,7 @@ class FeatureFlowIT {
         idOf(
             perform(
                     post("/team-roles")
-                        .content("{\"name\":\"Lead Engineer\",\"tierId\":" + tierId + "}"))
+                        .content("{\"name\":\"Project Lead\",\"tierId\":" + tierId + "}"))
                 .andExpect(status().isCreated())
                 .andReturn());
 
@@ -157,7 +157,7 @@ class FeatureFlowIT {
                                 + officeId
                                 + ",\"detailingLevelId\":"
                                 + levelId
-                                + ",\"leadUserIds\":[1],\"members\":[{\"userId\":2,\"teamRoleId\":"
+                                + ",\"members\":[{\"userId\":2,\"teamRoleId\":"
                                 + teamRoleId
                                 + "}]}"))
                 .andExpect(status().isCreated())
@@ -167,7 +167,8 @@ class FeatureFlowIT {
                 .andExpect(jsonPath("$.data.type").value("NON_CONFIRMED"))
                 .andExpect(jsonPath("$.data.lifecycleStatus").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.handlingOfficeName").value("Dubai Office"))
-                .andExpect(jsonPath("$.data.leadUserIds[0]").value(1))
+                // Member 2 carries the "Project Lead" role → it is the project lead.
+                .andExpect(jsonPath("$.data.leadUserIds[0]").value(2))
                 .andReturn());
 
     // Name character rule: '#' is not allowed.
@@ -261,8 +262,8 @@ class FeatureFlowIT {
         // MEP Team member id 2 → resolved display name.
         .andExpect(jsonPath("$.data.project.members[0].userId").value(2))
         .andExpect(jsonPath("$.data.project.members[0].userName").value("User 2"))
-        // Lead id 1 → resolved display name.
-        .andExpect(jsonPath("$.data.project.leads[0].userName").value("User 1"))
+        // Member 2 has the "Project Lead" role → it surfaces as the project lead.
+        .andExpect(jsonPath("$.data.project.leads[0].userName").value("User 2"))
         // Activity actor (subject "1") → resolved display name.
         .andExpect(jsonPath("$.data.activity[0].performedByName").value("User 1"));
 

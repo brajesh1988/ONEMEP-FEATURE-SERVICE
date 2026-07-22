@@ -16,7 +16,7 @@ Projects and Master Data bounded context for ONE-MEP. Owns the tables under the 
 
 | Story | Endpoint base | Table |
 |---|---|---|
-| Projects Listing / Add / Edit / Overview (ONEMEP-12/13/14/15) | `/projects` | `project_master`, `project_lead_mapping`, `project_member_mapping`, `project_activity_log` |
+| Projects Listing / Add / Edit / Overview (ONEMEP-12/13/14/15) | `/projects` | `project_master`, `project_member_mapping`, `project_activity_log` |
 | Handling Office (configured list for projects) | `/handling-offices` | `handling_office_master` |
 | Detailing Level (configured list for projects) | `/detailing-levels` | `detailing_level_master` |
 | Tier Listing / Add / Edit (ONEMEP-16/17/18) | `/tiers` | `tier_master` |
@@ -30,7 +30,8 @@ Projects and Master Data bounded context for ONE-MEP. Owns the tables under the 
 - **Fields:** `name` (max 50, restricted charset), `categoryId` (locked after creation), `type`
   (`CONFIRMED` / `NON_CONFIRMED`), `priority` (mandatory), `lifecycleStatus` (defaults `ACTIVE`),
   `client`, `location`, `handlingOfficeId`, `detailingLevelId`, `description` (max 2000),
-  `leadUserIds[]`, `members[]`.
+  `members[]`. Project **leads** are not assigned separately — a lead is any member whose team
+  role is "Project Lead"; the API derives `leadUserIds`/`leads`/`leadUsers` from those members.
 - **Project ID scheme:** Non-confirmed → `NC{id:0000}` (e.g. `NC0012`); Confirmed →
   `{category.seriesCode}{id:0000}` (e.g. series 4 → `40012`). Confirming a Non-confirmed project
   (`PATCH /projects/{id}/type?type=CONFIRMED`) reassigns the ID and **locks** the type — the
@@ -74,7 +75,7 @@ mkdir -p keys && cp ../ONEMEP-IDENTITY-SERVICE/keys/jwt-public.pem keys/
 
 ## Notes / follow-ups
 
-- `project_lead_mapping.user_id` / `project_member_mapping.user_id` reference
+- `project_member_mapping.user_id` references
   `onemep_dev.user_master` (owned by identity) via DB foreign keys. The service now validates the
   referenced users exist (friendly 404) before persisting, but the id lookup is DB-local — a
   gRPC/REST lookup to identity would let it enrich names/emails.

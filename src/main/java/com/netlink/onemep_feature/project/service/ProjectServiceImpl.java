@@ -22,13 +22,11 @@ import com.netlink.onemep_feature.project.dto.SpecSheetDto;
 import com.netlink.onemep_feature.project.dto.StakeholderDto;
 import com.netlink.onemep_feature.project.model.ProjectActivityLog;
 import com.netlink.onemep_feature.project.model.ProjectDeliverySchedule;
-import com.netlink.onemep_feature.project.model.ProjectLeadMapping;
 import com.netlink.onemep_feature.project.model.ProjectMaster;
 import com.netlink.onemep_feature.project.model.ProjectMemberMapping;
 import com.netlink.onemep_feature.project.model.ProjectStakeholder;
 import com.netlink.onemep_feature.project.repo.ProjectActivityLogRepo;
 import com.netlink.onemep_feature.project.repo.ProjectDeliveryScheduleRepo;
-import com.netlink.onemep_feature.project.repo.ProjectLeadMappingRepo;
 import com.netlink.onemep_feature.project.repo.ProjectMemberMappingRepo;
 import com.netlink.onemep_feature.project.repo.ProjectRepo;
 import com.netlink.onemep_feature.project.repo.ProjectSpecSheetRepo;
@@ -47,6 +45,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -77,8 +76,14 @@ public class ProjectServiceImpl implements ProjectService {
   /** Lifecycle transitions that require the user to supply a reason (ONEMEP-12/14/15). */
   private static final Set<String> REASON_REQUIRED = Set.of("ON_HOLD", "CLOSED");
 
+  /**
+   * Team-role name that designates a project member as a project lead. Matching by name is fragile
+   * (the role is user-editable master data); centralized here so a future stable code/flag on
+   * {@code team_role_master} only has to change in one place.
+   */
+  private static final String PROJECT_LEAD_ROLE = "Project Lead";
+
   private final ProjectRepo projectRepo;
-  private final ProjectLeadMappingRepo leadRepo;
   private final ProjectMemberMappingRepo memberRepo;
   private final ProjectActivityLogRepo activityRepo;
   private final ProjectSpecSheetRepo specSheetRepo;
@@ -97,7 +102,33 @@ public class ProjectServiceImpl implements ProjectService {
   public ApiResponse<?> list(GenericListRequestDTO request) {
     Page<ProjectMaster> page =
         projectRepo.findAll(buildSpec(request), PageableFactory.of(request, SORTABLE));
-    List<ProjectDto.ListItem> content = page.getContent().stream().map(this::toListItem).toList();
+
+    List<Long> projectIds = page.getContent().stream().map(ProjectMaster::getId).toList();
+
+    // Project leads = members carrying the "Project Lead" team role. One batch query for the whole
+    // page (avoids an N+1 member query per row).
+    Map<Long, List<Long>> leadUserIdsByProject =
+        projectIds.isEmpty()
+            ? Map.of()
+            : memberRepo.findByProject_IdIn(projectIds).stream()
+                .filter(m -> m.getUserId() != null)
+                .filter(m -> PROJECT_LEAD_ROLE.equalsIgnoreCase(m.getTeamRole().getName()))
+                .collect(
+                    Collectors.groupingBy(
+                        m -> m.getProject().getId(),
+                        Collectors.mapping(
+                            ProjectMemberMapping::getUserId,
+                            Collectors.toCollection(ArrayList::new))));
+
+    // One gRPC round-trip resolves every distinct lead id across the page.
+    Set<Long> allLeadIds = new LinkedHashSet<>();
+    leadUserIdsByProject.values().forEach(allLeadIds::addAll);
+    Map<Long, UserSummary> users = userDirectory.resolve(allLeadIds);
+
+    List<ProjectDto.ListItem> content =
+        page.getContent().stream()
+            .map(p -> toListItem(p, leadUserIdsByProject.getOrDefault(p.getId(), List.of()), users))
+            .toList();
     return apiResponseAdaptor.success(
         "Projects fetched successfully.", new PageResponse<>(page, content));
   }
@@ -143,7 +174,6 @@ public class ProjectServiceImpl implements ProjectService {
     project.setProjectNumber(generateProjectNumber(type, category, project.getId()));
     project = projectRepo.save(project);
 
-    replaceLeads(project, request.leadUserIds());
     replaceMembers(project, request.members());
     logActivity(project, "PROJECT_CREATED", "Project created as " + type, null);
 
@@ -259,9 +289,6 @@ public class ProjectServiceImpl implements ProjectService {
     project.setUpdatedBy(SecurityUtils.getUserId().orElse(null));
     projectRepo.save(project);
 
-    if (request.leadUserIds() != null) {
-      replaceLeads(project, request.leadUserIds());
-    }
     if (request.members() != null) {
       replaceMembers(project, request.members());
     }
@@ -402,32 +429,6 @@ public class ProjectServiceImpl implements ProjectService {
     return true;
   }
 
-  private void replaceLeads(ProjectMaster project, List<Long> leadUserIds) {
-    if (leadUserIds == null) {
-      leadRepo.deleteByProject_Id(project.getId());
-      return;
-    }
-    Set<Long> distinct = new LinkedHashSet<>();
-    for (Long userId : leadUserIds) {
-      if (userId != null) {
-        distinct.add(userId);
-      }
-    }
-    requireUsersExist(distinct);
-    leadRepo.deleteByProject_Id(project.getId());
-    // Flush the deletes before inserting replacements: otherwise Hibernate orders the new
-    // INSERTs ahead of the DELETEs in a single flush and trips the uq_project_lead constraint.
-    leadRepo.flush();
-    Long currentUser = SecurityUtils.getUserId().orElse(null);
-    for (Long userId : distinct) {
-      ProjectLeadMapping lead = new ProjectLeadMapping();
-      lead.setProject(project);
-      lead.setUserId(userId);
-      lead.setCreatedBy(currentUser);
-      leadRepo.save(lead);
-    }
-  }
-
   private void replaceMembers(ProjectMaster project, List<ProjectDto.MemberRequest> members) {
     if (members == null) {
       memberRepo.deleteByProject_Id(project.getId());
@@ -484,10 +485,18 @@ public class ProjectServiceImpl implements ProjectService {
     return users.getOrDefault(userId, UserSummary.unknown(userId)).displayName();
   }
 
+  /** Project leads are the members carrying the "Project Lead" team role. */
   private List<Long> currentLeadUserIds(Long projectId) {
-    return leadRepo.findByProject_Id(projectId).stream()
-        .map(ProjectLeadMapping::getUserId)
-        .filter(Objects::nonNull)
+    return leadUserIds(memberRepo.findByProject_Id(projectId));
+  }
+
+  /** Distinct user ids of members whose team role is {@link #PROJECT_LEAD_ROLE}. */
+  private static List<Long> leadUserIds(List<ProjectMemberMapping> members) {
+    return members.stream()
+        .filter(m -> m.getUserId() != null)
+        .filter(m -> PROJECT_LEAD_ROLE.equalsIgnoreCase(m.getTeamRole().getName()))
+        .map(ProjectMemberMapping::getUserId)
+        .distinct()
         .toList();
   }
 
@@ -688,11 +697,11 @@ public class ProjectServiceImpl implements ProjectService {
     throw new ApplicationException("Filter '" + key + "' must be true or false.");
   }
 
-  private ProjectDto.ListItem toListItem(ProjectMaster p) {
-    List<Long> leadIds =
-        leadRepo.findByProject_Id(p.getId()).stream()
-            .map(ProjectLeadMapping::getUserId)
-            .filter(Objects::nonNull)
+  private ProjectDto.ListItem toListItem(
+      ProjectMaster p, List<Long> leadUserIds, Map<Long, UserSummary> users) {
+    List<ProjectDto.UserRef> leadUsers =
+        leadUserIds.stream()
+            .map(uid -> new ProjectDto.UserRef(uid, displayName(users, uid)))
             .toList();
     return new ProjectDto.ListItem(
         p.getId(),
@@ -704,17 +713,14 @@ public class ProjectServiceImpl implements ProjectService {
         p.getLifecycleStatus(),
         p.getPriority(),
         p.getActive(),
-        leadIds,
+        leadUserIds,
+        leadUsers,
         p.getUpdatedDate());
   }
 
   private ProjectDto.Detail toDetail(ProjectMaster p) {
-    List<Long> leadIds =
-        leadRepo.findByProject_Id(p.getId()).stream()
-            .map(ProjectLeadMapping::getUserId)
-            .filter(Objects::nonNull)
-            .toList();
     List<ProjectMemberMapping> memberEntities = memberRepo.findByProject_Id(p.getId());
+    List<Long> leadIds = leadUserIds(memberEntities);
 
     Set<Long> idsToResolve = new LinkedHashSet<>(leadIds);
     memberEntities.stream()

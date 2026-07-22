@@ -14,17 +14,17 @@ import com.netlink.onemep_feature.category.repo.CategoryRepo;
 import com.netlink.onemep_feature.common.adaptor.ApiResponseAdaptor;
 import com.netlink.onemep_feature.common.dto.ApiResponse;
 import com.netlink.onemep_feature.common.dto.GenericListRequestDTO;
+import com.netlink.onemep_feature.common.dto.PageResponse;
 import com.netlink.onemep_feature.detailinglevel.repo.DetailingLevelRepo;
 import com.netlink.onemep_feature.exception.ApplicationException;
 import com.netlink.onemep_feature.exception.ResourceNotFoundException;
 import com.netlink.onemep_feature.handlingoffice.repo.HandlingOfficeRepo;
 import com.netlink.onemep_feature.notification.ProjectNotificationService;
 import com.netlink.onemep_feature.project.dto.ProjectDto;
-import com.netlink.onemep_feature.project.model.ProjectLeadMapping;
 import com.netlink.onemep_feature.project.model.ProjectMaster;
+import com.netlink.onemep_feature.project.model.ProjectMemberMapping;
 import com.netlink.onemep_feature.project.repo.ProjectActivityLogRepo;
 import com.netlink.onemep_feature.project.repo.ProjectDeliveryScheduleRepo;
-import com.netlink.onemep_feature.project.repo.ProjectLeadMappingRepo;
 import com.netlink.onemep_feature.project.repo.ProjectMemberMappingRepo;
 import com.netlink.onemep_feature.project.repo.ProjectRepo;
 import com.netlink.onemep_feature.project.repo.ProjectSpecSheetRepo;
@@ -33,6 +33,7 @@ import com.netlink.onemep_feature.teamrole.model.TeamRoleMaster;
 import com.netlink.onemep_feature.teamrole.repo.TeamRoleRepo;
 import com.netlink.onemep_feature.tier.model.TierMaster;
 import com.netlink.onemep_feature.user.client.UserDirectoryClient;
+import com.netlink.onemep_feature.user.dto.UserSummary;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -52,7 +53,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ProjectServiceImplTest {
 
   @Mock private ProjectRepo projectRepo;
-  @Mock private ProjectLeadMappingRepo leadRepo;
   @Mock private ProjectMemberMappingRepo memberRepo;
   @Mock private ProjectActivityLogRepo activityRepo;
   @Mock private ProjectSpecSheetRepo specSheetRepo;
@@ -72,7 +72,6 @@ class ProjectServiceImplTest {
     service =
         new ProjectServiceImpl(
             projectRepo,
-            leadRepo,
             memberRepo,
             activityRepo,
             specSheetRepo,
@@ -101,9 +100,15 @@ class ProjectServiceImplTest {
             });
     when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
     when(userDirectory.findMissing(any())).thenReturn(Set.of());
+    when(teamRoleRepo.findById(5L)).thenReturn(Optional.of(teamRole(5L)));
     when(teamRoleRepo.findById(7L)).thenReturn(Optional.of(teamRole(7L)));
-    when(leadRepo.findByProject_Id(100L)).thenReturn(List.of(leadMapping(1L), leadMapping(3L)));
-    when(memberRepo.findByProject_Id(100L)).thenReturn(List.of());
+    // Leads are derived at read time from members carrying the "Project Lead" role.
+    when(memberRepo.findByProject_Id(100L))
+        .thenReturn(
+            List.of(
+                memberMapping(null, 1L, "Project Lead"),
+                memberMapping(null, 3L, "Project Lead"),
+                memberMapping(null, 2L, "Draughtsman")));
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
@@ -117,8 +122,10 @@ class ProjectServiceImplTest {
             null,
             null,
             "demo",
-            List.of(1L, 3L),
-            List.of(new ProjectDto.MemberRequest(2L, 7L)));
+            List.of(
+                new ProjectDto.MemberRequest(1L, 5L),
+                new ProjectDto.MemberRequest(3L, 5L),
+                new ProjectDto.MemberRequest(2L, 7L)));
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
 
@@ -129,7 +136,6 @@ class ProjectServiceImplTest {
     assertThat(data.priority()).isEqualTo("HIGH");
     assertThat(data.client()).isEqualTo("Acme Corp");
     assertThat(data.leadUserIds()).containsExactly(1L, 3L);
-    verify(leadRepo).flush();
     verify(memberRepo).flush();
   }
 
@@ -146,23 +152,11 @@ class ProjectServiceImplTest {
               return p;
             });
     when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
-    when(leadRepo.findByProject_Id(12L)).thenReturn(List.of());
     when(memberRepo.findByProject_Id(12L)).thenReturn(List.of());
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
-            "Marina",
-            10L,
-            "CONFIRMED",
-            "MEDIUM",
-            "ACTIVE",
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null);
+            "Marina", 10L, "CONFIRMED", "MEDIUM", "ACTIVE", null, null, null, null, null, null);
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
 
@@ -179,16 +173,16 @@ class ProjectServiceImplTest {
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
-            "NoSeries", 10L, "CONFIRMED", "LOW", null, null, null, null, null, null, null, null);
+            "NoSeries", 10L, "CONFIRMED", "LOW", null, null, null, null, null, null, null);
 
     assertThatThrownBy(() -> service.create(request)).isInstanceOf(ApplicationException.class);
     verify(projectRepo, never()).saveAndFlush(any());
   }
 
   @Test
-  void create_invalidLeadUserId_throwsNotFound() {
+  void create_invalidMemberUserId_throwsNotFound() {
     CategoryMaster category = category(10L, "INF", "Infrastructure", 6);
-    when(projectRepo.findByNameIgnoreCase("BadLead")).thenReturn(Optional.empty());
+    when(projectRepo.findByNameIgnoreCase("BadMember")).thenReturn(Optional.empty());
     when(categoryRepo.findById(10L)).thenReturn(Optional.of(category));
     when(projectRepo.saveAndFlush(any(ProjectMaster.class)))
         .thenAnswer(
@@ -202,7 +196,7 @@ class ProjectServiceImplTest {
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
-            "BadLead",
+            "BadMember",
             10L,
             "NON_CONFIRMED",
             "LOW",
@@ -212,8 +206,7 @@ class ProjectServiceImplTest {
             null,
             null,
             null,
-            List.of(999999L),
-            null);
+            List.of(new ProjectDto.MemberRequest(999999L, 5L)));
 
     assertThatThrownBy(() -> service.create(request)).isInstanceOf(ResourceNotFoundException.class);
   }
@@ -224,23 +217,11 @@ class ProjectServiceImplTest {
     when(projectRepo.findById(1L)).thenReturn(Optional.of(existing));
     when(projectRepo.findByNameIgnoreCaseAndIdNot("Apollo II", 1L)).thenReturn(Optional.empty());
     when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
-    when(leadRepo.findByProject_Id(1L)).thenReturn(List.of(leadMapping(1L)));
     when(memberRepo.findByProject_Id(1L)).thenReturn(List.of());
 
     ProjectDto.UpdateRequest request =
         new ProjectDto.UpdateRequest(
-            "Apollo II",
-            "CRITICAL",
-            "COMPLETED",
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "upd",
-            null,
-            null);
+            "Apollo II", "CRITICAL", "COMPLETED", null, null, null, null, null, null, "upd", null);
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.update(1L, request).getData();
 
@@ -263,7 +244,7 @@ class ProjectServiceImplTest {
 
     ProjectDto.UpdateRequest request =
         new ProjectDto.UpdateRequest(
-            "Apollo", "MEDIUM", "ON_HOLD", null, null, null, null, null, null, null, null, null);
+            "Apollo", "MEDIUM", "ON_HOLD", null, null, null, null, null, null, null, null);
 
     assertThatThrownBy(() -> service.update(1L, request)).isInstanceOf(ApplicationException.class);
   }
@@ -286,7 +267,6 @@ class ProjectServiceImplTest {
     existing.setTypeLocked(false);
     when(projectRepo.findById(1L)).thenReturn(Optional.of(existing));
     when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
-    when(leadRepo.findByProject_Id(1L)).thenReturn(List.of());
     when(memberRepo.findByProject_Id(1L)).thenReturn(List.of());
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.updateType(1L, "CONFIRMED").getData();
@@ -312,7 +292,8 @@ class ProjectServiceImplTest {
     ProjectMaster existing = existingProject();
     when(projectRepo.findById(1L)).thenReturn(Optional.of(existing));
     when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
-    when(leadRepo.findByProject_Id(1L)).thenReturn(List.of(leadMapping(1L)));
+    when(memberRepo.findByProject_Id(1L))
+        .thenReturn(List.of(memberMapping(null, 1L, "Project Lead")));
 
     ApiResponse<?> response = service.updatePriority(1L, "high");
 
@@ -343,6 +324,36 @@ class ProjectServiceImplTest {
         .isInstanceOf(ApplicationException.class);
     verify(notificationService, never())
         .notifyPriorityChanged(any(), any(), any(), any(), anyList());
+  }
+
+  @Test
+  void list_populatesLeadUsersFromProjectLeadMembers() {
+    ProjectMaster project = existingProject();
+    when(projectRepo.findAll(
+            any(org.springframework.data.jpa.domain.Specification.class),
+            any(org.springframework.data.domain.Pageable.class)))
+        .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(project)));
+    when(memberRepo.findByProject_IdIn(List.of(1L)))
+        .thenReturn(
+            List.of(
+                memberMapping(project, 1L, "Project Lead"),
+                memberMapping(project, 3L, "project lead"), // case-insensitive match
+                memberMapping(project, 2L, "Draughtsman"))); // non-lead, excluded
+    when(userDirectory.resolve(any()))
+        .thenReturn(
+            Map.of(
+                1L, new UserSummary(1L, "Ava Lead", "ava@onemep.com"),
+                3L, new UserSummary(3L, "Cara Lead", "cara@onemep.com")));
+
+    ApiResponse<?> response = service.list(new GenericListRequestDTO());
+    PageResponse<ProjectDto.ListItem> page = (PageResponse<ProjectDto.ListItem>) response.getData();
+    ProjectDto.ListItem item = page.getContent().get(0);
+
+    assertThat(item.leadUsers())
+        .extracting(ProjectDto.UserRef::userId, ProjectDto.UserRef::userName)
+        .containsExactlyInAnyOrder(
+            org.assertj.core.groups.Tuple.tuple(1L, "Ava Lead"),
+            org.assertj.core.groups.Tuple.tuple(3L, "Cara Lead"));
   }
 
   @Test
@@ -394,9 +405,15 @@ class ProjectServiceImplTest {
     return r;
   }
 
-  private ProjectLeadMapping leadMapping(long userId) {
-    ProjectLeadMapping m = new ProjectLeadMapping();
+  private static ProjectMemberMapping memberMapping(
+      ProjectMaster project, long userId, String roleName) {
+    ProjectMemberMapping m = new ProjectMemberMapping();
+    m.setProject(project);
     m.setUserId(userId);
+    TeamRoleMaster role = new TeamRoleMaster();
+    role.setId(userId);
+    role.setName(roleName);
+    m.setTeamRole(role);
     return m;
   }
 }

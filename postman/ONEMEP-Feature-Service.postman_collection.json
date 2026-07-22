@@ -359,7 +359,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant\",\n  \"categoryId\": {{categoryId}},\n  \"type\": \"NON_CONFIRMED\",\n  \"priority\": \"HIGH\",\n  \"lifecycleStatus\": \"ACTIVE\",\n  \"client\": \"Marina Developments LLC\",\n  \"location\": \"Singapore\",\n  \"handlingOfficeId\": {{handlingOfficeId}},\n  \"detailingLevelId\": {{detailingLevelId}},\n  \"description\": \"HVAC discipline scope: central chiller plant sizing and CHW distribution.\",\n  \"leadUserIds\": [1],\n  \"members\": [\n    { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} }\n  ]\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant\",\n  \"categoryId\": {{categoryId}},\n  \"type\": \"NON_CONFIRMED\",\n  \"priority\": \"HIGH\",\n  \"lifecycleStatus\": \"ACTIVE\",\n  \"client\": \"Marina Developments LLC\",\n  \"location\": \"Singapore\",\n  \"handlingOfficeId\": {{handlingOfficeId}},\n  \"detailingLevelId\": {{detailingLevelId}},\n  \"description\": \"HVAC discipline scope: central chiller plant sizing and CHW distribution.\",\n  \"members\": [\n    { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} }\n  ]\n}" },
             "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] }
           }
         },
@@ -379,7 +379,7 @@
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant (Rev B)\",\n  \"priority\": \"CRITICAL\",\n  \"lifecycleStatus\": \"ON_HOLD\",\n  \"client\": \"Marina Developments LLC\",\n  \"location\": \"Singapore\",\n  \"handlingOfficeId\": {{handlingOfficeId}},\n  \"detailingLevelId\": {{detailingLevelId}},\n  \"lifecycleReason\": \"Awaiting client sign-off on revised scope.\",\n  \"description\": \"Updated scope after design review.\",\n  \"leadUserIds\": [1],\n  \"members\": [ { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} } ]\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Marina Bay Tower - Central Chiller Plant (Rev B)\",\n  \"priority\": \"CRITICAL\",\n  \"lifecycleStatus\": \"ON_HOLD\",\n  \"client\": \"Marina Developments LLC\",\n  \"location\": \"Singapore\",\n  \"handlingOfficeId\": {{handlingOfficeId}},\n  \"detailingLevelId\": {{detailingLevelId}},\n  \"lifecycleReason\": \"Awaiting client sign-off on revised scope.\",\n  \"description\": \"Updated scope after design review.\",\n  \"members\": [ { \"userId\": 1, \"teamRoleId\": {{teamRoleId}} } ]\n}" },
             "url": { "raw": "{{baseUrl}}/projects/{{projectId}}", "host": ["{{baseUrl}}"], "path": ["projects", "{{projectId}}"] }
           }
         },
