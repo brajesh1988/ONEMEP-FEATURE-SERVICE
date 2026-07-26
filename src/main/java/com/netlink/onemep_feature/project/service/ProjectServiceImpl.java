@@ -6,6 +6,7 @@ import com.netlink.onemep_feature.common.adaptor.ApiResponseAdaptor;
 import com.netlink.onemep_feature.common.dto.ApiResponse;
 import com.netlink.onemep_feature.common.dto.GenericListRequestDTO;
 import com.netlink.onemep_feature.common.dto.PageResponse;
+import com.netlink.onemep_feature.common.sequence.SequenceNumbers;
 import com.netlink.onemep_feature.common.util.PageableFactory;
 import com.netlink.onemep_feature.common.util.SecurityUtils;
 import com.netlink.onemep_feature.detailinglevel.model.DetailingLevelMaster;
@@ -75,6 +76,9 @@ public class ProjectServiceImpl implements ProjectService {
 
   /** Lifecycle transitions that require the user to supply a reason (ONEMEP-12/14/15). */
   private static final Set<String> REASON_REQUIRED = Set.of("ON_HOLD", "CLOSED");
+
+  /** Zero-pad width for the per-category running counter in confirmed project numbers. */
+  private static final int CONFIRMED_NUMBER_PAD = 4;
 
   /**
    * Team-role name that designates a project member as a project lead. Matching by name is fragile
@@ -150,10 +154,6 @@ public class ProjectServiceImpl implements ProjectService {
         request.lifecycleStatus() == null || request.lifecycleStatus().isBlank()
             ? "ACTIVE"
             : validateLifecycle(request.lifecycleStatus());
-    // Fail fast: a confirmed project needs a numeric category series to build its Project ID.
-    if ("CONFIRMED".equals(type)) {
-      requireSeriesCode(category);
-    }
 
     ProjectMaster project = new ProjectMaster();
     project.setName(name);
@@ -422,7 +422,6 @@ public class ProjectServiceImpl implements ProjectService {
       throw new ApplicationException("Project type is locked and cannot be changed.");
     }
     CategoryMaster category = project.getCategory();
-    requireSeriesCode(category);
     project.setType("CONFIRMED");
     project.setTypeLocked(Boolean.TRUE);
     project.setProjectNumber(generateProjectNumber("CONFIRMED", category, project.getId()));
@@ -540,21 +539,25 @@ public class ProjectServiceImpl implements ProjectService {
         .orElseThrow(() -> new ResourceNotFoundException("Detailing level not found."));
   }
 
-  private static void requireSeriesCode(CategoryMaster category) {
-    if (category.getSeriesCode() == null) {
-      throw new ApplicationException(
-          "Category \""
-              + category.getName()
-              + "\" has no series code configured; a confirmed Project ID cannot be generated.");
-    }
-  }
-
-  /** Confirmed → {series}{id:0000}; Non-confirmed → NC{id:0000}. */
-  private static String generateProjectNumber(String type, CategoryMaster category, Long id) {
+  /**
+   * Confirmed → {@code prefix + lastNumber:0000 + suffix} from a per-category running counter (e.g.
+   * {@code HTL0001}); Non-confirmed → {@code NC{id:0000}}. The confirmed counter is reserved under
+   * a pessimistic lock so concurrent confirmations never collide on the unique project number.
+   */
+  private String generateProjectNumber(String type, CategoryMaster category, Long id) {
     if ("CONFIRMED".equals(type)) {
-      return category.getSeriesCode() + String.format("%04d", id);
+      return reserveConfirmedNumber(category.getId());
     }
     return "NC" + String.format("%04d", id);
+  }
+
+  private String reserveConfirmedNumber(Long categoryId) {
+    CategoryMaster category =
+        categoryRepo
+            .findByIdForUpdate(categoryId)
+            .orElseThrow(() -> new ResourceNotFoundException("Category not found."));
+    // Mutates category.lastNumber; the change is flushed by dirty checking within this transaction.
+    return SequenceNumbers.allocate(category, CONFIRMED_NUMBER_PAD);
   }
 
   private static void requireReasonIfNeeded(String lifecycle, String reason) {

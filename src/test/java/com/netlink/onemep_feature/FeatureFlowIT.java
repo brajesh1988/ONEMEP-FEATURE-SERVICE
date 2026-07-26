@@ -186,9 +186,8 @@ class FeatureFlowIT {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.type").value("CONFIRMED"))
         .andExpect(jsonPath("$.data.typeLocked").value(true))
-        .andExpect(
-            jsonPath("$.data.projectNumber")
-                .value(org.hamcrest.Matchers.matchesPattern("99\\d{4}")));
+        // Confirmed number = category prefix (MEP) + per-category counter (first → 0001).
+        .andExpect(jsonPath("$.data.projectNumber").value("MEP0001"));
 
     // Confirmed project cannot revert to Non-confirmed.
     perform(patch("/projects/" + projectId + "/type").param("type", "NON_CONFIRMED"))

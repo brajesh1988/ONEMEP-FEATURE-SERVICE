@@ -21,6 +21,12 @@ public final class CategoryDto {
               message = "Prefix may contain only letters and digits.")
           String prefix,
       @Positive(message = "Series code must be a positive number.") Integer seriesCode,
+      @Size(max = 30, message = "Type must not exceed 30 characters.") String type,
+      @Size(max = 10, message = "Suffix must not exceed 10 characters.")
+          @Pattern(
+              regexp = "^[A-Za-z0-9]*$",
+              message = "Suffix may contain only letters and digits.")
+          String suffix,
       Boolean active) {}
 
   /** Name and availability are editable; category number and prefix stay locked. */
@@ -36,6 +42,9 @@ public final class CategoryDto {
       String name,
       String prefix,
       Integer seriesCode,
+      String type,
+      String suffix,
+      Integer lastNumber,
       Boolean active,
       Long updatedBy,
       LocalDateTime updatedDate) {}

@@ -46,7 +46,7 @@ class CategoryServiceImplTest {
     when(categoryRepo.save(any(CategoryMaster.class))).thenAnswer(inv -> inv.getArgument(0));
 
     ApiResponse<?> response =
-        service.create(new CategoryDto.CreateRequest("Infra", "inf", null, null));
+        service.create(new CategoryDto.CreateRequest("Infra", "inf", null, null, null, null));
 
     CategoryDto.Response data = (CategoryDto.Response) response.getData();
     assertThat(data.prefix()).isEqualTo("INF");
@@ -60,7 +60,9 @@ class CategoryServiceImplTest {
     when(categoryRepo.findByPrefixIgnoreCase("INF")).thenReturn(Optional.of(new CategoryMaster()));
 
     assertThatThrownBy(
-            () -> service.create(new CategoryDto.CreateRequest("Infra", "INF", null, true)))
+            () ->
+                service.create(
+                    new CategoryDto.CreateRequest("Infra", "INF", null, null, null, true)))
         .isInstanceOf(DuplicateResourceException.class);
     verify(categoryRepo, never()).saveAndFlush(any());
   }

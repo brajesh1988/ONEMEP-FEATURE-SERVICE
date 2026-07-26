@@ -88,6 +88,8 @@ public class CategoryServiceImpl implements CategoryService {
     category.setName(name);
     category.setPrefix(prefix);
     category.setSeriesCode(request.seriesCode());
+    category.setType(normalizeToNull(request.type()));
+    category.setSuffix(normalizeSuffix(request.suffix()));
     category.setActive(request.active() == null ? Boolean.TRUE : request.active());
     category.setCreatedBy(SecurityUtils.getUserId().orElse(null));
     // A temp, unique placeholder satisfies NOT NULL/UNIQUE on the initial insert; the real,
@@ -151,6 +153,19 @@ public class CategoryServiceImpl implements CategoryService {
     return raw == null ? "" : raw.trim();
   }
 
+  private static String normalizeToNull(String raw) {
+    if (raw == null) {
+      return null;
+    }
+    String trimmed = raw.trim();
+    return trimmed.isEmpty() ? null : trimmed;
+  }
+
+  private static String normalizeSuffix(String raw) {
+    String trimmed = normalizeToNull(raw);
+    return trimmed == null ? null : trimmed.toUpperCase();
+  }
+
   private Specification<CategoryMaster> searchSpec(String search) {
     return (root, query, cb) -> {
       if (search == null) {
@@ -171,6 +186,9 @@ public class CategoryServiceImpl implements CategoryService {
         c.getName(),
         c.getPrefix(),
         c.getSeriesCode(),
+        c.getType(),
+        c.getSuffix(),
+        c.getLastNumber(),
         c.getActive(),
         c.getUpdatedBy(),
         c.getUpdatedDate());
