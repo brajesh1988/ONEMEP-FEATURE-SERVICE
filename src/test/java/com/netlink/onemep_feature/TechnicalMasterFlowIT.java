@@ -1,6 +1,7 @@
 package com.netlink.onemep_feature;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -30,8 +31,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /**
  * End-to-end flow for the editable, category-driven Technical Master (ONEMEP-29): the seeded
  * template per category, building a form from scratch (add head + fields) on a custom category,
- * saving values, the mandatory-field save block, toggling a field inactive to unblock, and
- * attachments.
+ * saving values, the mandatory-field save block, switching a head out of the project or deleting
+ * the field to unblock, and attachments.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -160,10 +161,26 @@ class TechnicalMasterFlowIT {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
 
-    // Deactivate the mandatory field → save is unblocked.
+    // Switch the head out of the project → its mandatory field stops blocking the save.
     perform(
-            patch("/projects/" + projectId + "/technical-master/fields/" + mandatoryId)
+            patch("/projects/" + projectId + "/technical-master/sections/" + sectionId)
                 .content("{\"active\":false}"))
+        .andExpect(status().isOk());
+    perform(
+            put("/projects/" + projectId + "/technical-master")
+                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
+        .andExpect(status().isOk());
+
+    // Back in the project the block returns; deleting the field clears it for good.
+    perform(
+            patch("/projects/" + projectId + "/technical-master/sections/" + sectionId)
+                .content("{\"active\":true}"))
+        .andExpect(status().isOk());
+    perform(
+            put("/projects/" + projectId + "/technical-master")
+                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
+        .andExpect(status().isBadRequest());
+    perform(delete("/projects/" + projectId + "/technical-master/fields/" + mandatoryId))
         .andExpect(status().isOk());
     perform(
             put("/projects/" + projectId + "/technical-master")

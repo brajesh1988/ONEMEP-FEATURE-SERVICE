@@ -51,6 +51,10 @@ public class ProjectMaster extends BaseEntity {
   @Column(name = "type_locked", nullable = false)
   private Boolean typeLocked = Boolean.FALSE;
 
+  /** Current design stage: CON, SD, DD, TS, GFC or AB. Null until the first stage is recorded. */
+  @Column(name = "current_stage")
+  private String currentStage;
+
   @Column(name = "client")
   private String client;
 

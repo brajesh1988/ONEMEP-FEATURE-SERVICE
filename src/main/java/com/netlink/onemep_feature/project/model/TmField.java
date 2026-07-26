@@ -14,9 +14,9 @@ import lombok.Setter;
 
 /**
  * A field in the Technical Master catalog (ONEMEP-29), belonging to a {@link TmSection} of a
- * category ({@code series_code}). Fully editable: add / rename / toggle active / delete. A
- * project's sheet is the ACTIVE fields of its category; {@code required} fields must be filled
- * before a project's Technical Master can be saved.
+ * category ({@code series_code}). Fully editable: add / rename / delete. Inclusion in a project's
+ * sheet is decided by the head ({@link TmSection#getActive()}); {@code required} fields of an
+ * active head must be filled before a project's Technical Master can be saved.
  */
 @Entity
 @Table(name = "tm_field")
@@ -62,7 +62,4 @@ public class TmField {
 
   @Column(name = "field_order", nullable = false)
   private Integer fieldOrder;
-
-  @Column(name = "active", nullable = false)
-  private Boolean active = Boolean.TRUE;
 }
