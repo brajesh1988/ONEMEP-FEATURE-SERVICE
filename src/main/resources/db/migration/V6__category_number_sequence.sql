@@ -1,5 +1,5 @@
 -- ============================================================================
--- V7 - Category-driven confirmed project numbering
+-- V6 - Category-driven confirmed project numbering
 --
 -- Confirmed project numbers are now built from the category's prefix + a
 -- per-category running counter (+ optional suffix), instead of series_code + id:
