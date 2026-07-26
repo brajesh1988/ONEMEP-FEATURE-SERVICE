@@ -1,5 +1,7 @@
 package com.netlink.onemep_feature.project.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,23 +17,44 @@ import java.util.Map;
 public final class TechnicalMasterDto {
   private TechnicalMasterDto() {}
 
-  // ── Template (per category) ─────────────────────────────────────────────────
+  // ── Template (per category, editable catalog) ───────────────────────────────
 
   /** The form for a project's category: ordered sections, each with its fields. */
   public record Template(Long projectId, Integer seriesCode, List<Section> sections) {}
 
-  public record Section(String title, List<Field> fields) {}
+  public record Section(
+      Long id, String title, int order, boolean active, boolean deletable, List<Field> fields) {}
 
   public record Field(
+      Long id,
       String key,
       String label,
       String unit,
       String dataType,
       boolean required,
+      boolean active,
       String feeds,
       String notes) {}
 
-  // ── Requests ────────────────────────────────────────────────────────────────
+  // ── Catalog edit requests (add head / field, per category) ──────────────────
+
+  public record SectionRequest(
+      @NotBlank(message = "Section title is required.")
+          @Size(max = 120, message = "Section title cannot exceed 120 characters.")
+          String title,
+      Boolean active) {}
+
+  public record FieldRequest(
+      @NotNull(message = "Section is required.") Long sectionId,
+      @NotBlank(message = "Field label is required.")
+          @Size(max = 200, message = "Field label cannot exceed 200 characters.")
+          String label,
+      @Size(max = 60, message = "Unit cannot exceed 60 characters.") String unit,
+      String dataType,
+      Boolean required,
+      Boolean active) {}
+
+  // ── Value requests ──────────────────────────────────────────────────────────
 
   /** Create-or-replace: general remarks + the filled values (blank values are cleared). */
   public record UpsertRequest(

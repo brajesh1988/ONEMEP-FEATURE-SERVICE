@@ -2,17 +2,21 @@ package com.netlink.onemep_feature.project.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
 /**
- * A single field in the Technical Master catalog (PTMS field dictionary, ONEMEP-29). Seeded from
- * the official spreadsheet in V8. Which categories use a field is held in {@code tm_field_category}
- * (keyed by the category's {@code series_code}); a project's sheet is the fields for its category.
+ * A field in the Technical Master catalog (ONEMEP-29), belonging to a {@link TmSection} of a
+ * category ({@code series_code}). Fully editable: add / rename / toggle active / delete. A
+ * project's sheet is the ACTIVE fields of its category; {@code required} fields must be filled
+ * before a project's Technical Master can be saved.
  */
 @Entity
 @Table(name = "tm_field")
@@ -25,11 +29,12 @@ public class TmField {
   @Column(name = "id", nullable = false)
   private Long id;
 
-  @Column(name = "section", nullable = false)
-  private String section;
+  @ManyToOne(fetch = FetchType.LAZY, optional = false)
+  @JoinColumn(name = "section_id", nullable = false)
+  private TmSection section;
 
-  @Column(name = "section_order", nullable = false)
-  private Integer sectionOrder;
+  @Column(name = "series_code", nullable = false)
+  private Integer seriesCode;
 
   @Column(name = "label", nullable = false)
   private String label;
@@ -40,21 +45,24 @@ public class TmField {
   @Column(name = "unit")
   private String unit;
 
-  /** NUMBER or TEXT (no dropdowns exist in the sheet). */
+  /** NUMBER or TEXT. */
   @Column(name = "data_type", nullable = false)
-  private String dataType;
+  private String dataType = "TEXT";
+
+  /** Mandatory field — must have a value before the project's Technical Master can be saved. */
+  @Column(name = "required", nullable = false)
+  private Boolean required = Boolean.FALSE;
 
   /** YES = auto-fed to calculators/AI skills; REF = reference only. */
   @Column(name = "feeds", nullable = false)
-  private String feeds;
-
-  /** Core = locked field the skills depend on (treated as required in the UI). */
-  @Column(name = "core", nullable = false)
-  private Boolean core = Boolean.FALSE;
+  private String feeds = "REF";
 
   @Column(name = "notes")
   private String notes;
 
   @Column(name = "field_order", nullable = false)
   private Integer fieldOrder;
+
+  @Column(name = "active", nullable = false)
+  private Boolean active = Boolean.TRUE;
 }
