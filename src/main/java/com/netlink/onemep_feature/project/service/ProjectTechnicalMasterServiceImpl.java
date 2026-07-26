@@ -4,33 +4,29 @@ import com.netlink.onemep_feature.common.adaptor.ApiResponseAdaptor;
 import com.netlink.onemep_feature.common.dto.ApiResponse;
 import com.netlink.onemep_feature.common.util.SecurityUtils;
 import com.netlink.onemep_feature.exception.ApplicationException;
-import com.netlink.onemep_feature.exception.DuplicateResourceException;
 import com.netlink.onemep_feature.exception.ResourceNotFoundException;
 import com.netlink.onemep_feature.project.dto.DeliveryScheduleDto;
 import com.netlink.onemep_feature.project.dto.TechnicalMasterDto;
 import com.netlink.onemep_feature.project.model.ProjectActivityLog;
 import com.netlink.onemep_feature.project.model.ProjectDeliverySchedule;
-import com.netlink.onemep_feature.project.model.ProjectDidSpecification;
 import com.netlink.onemep_feature.project.model.ProjectMaster;
 import com.netlink.onemep_feature.project.model.ProjectTechnicalAttachment;
+import com.netlink.onemep_feature.project.model.ProjectTechnicalFieldValue;
 import com.netlink.onemep_feature.project.model.ProjectTechnicalMaster;
-import com.netlink.onemep_feature.project.model.ProjectTechnicalParameter;
+import com.netlink.onemep_feature.project.model.TmField;
 import com.netlink.onemep_feature.project.repo.ProjectActivityLogRepo;
 import com.netlink.onemep_feature.project.repo.ProjectDeliveryScheduleRepo;
-import com.netlink.onemep_feature.project.repo.ProjectDidSpecificationRepo;
 import com.netlink.onemep_feature.project.repo.ProjectRepo;
 import com.netlink.onemep_feature.project.repo.ProjectTechnicalAttachmentRepo;
+import com.netlink.onemep_feature.project.repo.ProjectTechnicalFieldValueRepo;
 import com.netlink.onemep_feature.project.repo.ProjectTechnicalMasterRepo;
-import com.netlink.onemep_feature.project.repo.ProjectTechnicalParameterRepo;
-import com.netlink.onemep_feature.technical.model.TechnicalMaster;
-import com.netlink.onemep_feature.technical.repo.TechnicalMasterRepo;
-import com.netlink.onemep_feature.unit.model.UnitMaster;
-import com.netlink.onemep_feature.unit.repo.UnitRepo;
+import com.netlink.onemep_feature.project.repo.TmFieldRepo;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,18 +42,49 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
   private static final long MAX_SIZE_BYTES = 150L * 1024 * 1024;
 
   private static final Set<String> ALLOWED_EXTENSIONS = Set.of("doc", "docx", "pdf");
-  private static final Set<String> SCOPES = Set.of("COMMON", "CATEGORY_SPECIFIC");
 
   private final ProjectTechnicalMasterRepo technicalMasterRepo;
-  private final ProjectTechnicalParameterRepo parameterRepo;
-  private final ProjectDidSpecificationRepo didRepo;
+  private final ProjectTechnicalFieldValueRepo fieldValueRepo;
+  private final TmFieldRepo tmFieldRepo;
   private final ProjectTechnicalAttachmentRepo attachmentRepo;
   private final ProjectRepo projectRepo;
   private final ProjectDeliveryScheduleRepo deliveryScheduleRepo;
-  private final TechnicalMasterRepo technicalFieldRepo;
-  private final UnitRepo unitRepo;
   private final ProjectActivityLogRepo activityRepo;
   private final ApiResponseAdaptor apiResponseAdaptor;
+
+  // ── Template ───────────────────────────────────────────────────────────────
+
+  @Override
+  @Transactional(readOnly = true)
+  public ApiResponse<?> getTemplate(Long projectId) {
+    ProjectMaster project = requireProject(projectId);
+    Integer series = seriesCodeOf(project);
+    List<TmField> fields = series == null ? List.of() : tmFieldRepo.findByCategorySeries(series);
+
+    Map<String, List<TechnicalMasterDto.Field>> bySection = new LinkedHashMap<>();
+    for (TmField f : fields) {
+      bySection
+          .computeIfAbsent(f.getSection(), k -> new java.util.ArrayList<>())
+          .add(
+              new TechnicalMasterDto.Field(
+                  f.getFieldKey(),
+                  f.getLabel(),
+                  f.getUnit(),
+                  f.getDataType(),
+                  Boolean.TRUE.equals(f.getCore()),
+                  f.getFeeds(),
+                  f.getNotes()));
+    }
+    List<TechnicalMasterDto.Section> sections =
+        bySection.entrySet().stream()
+            .map(e -> new TechnicalMasterDto.Section(e.getKey(), e.getValue()))
+            .toList();
+    return apiResponseAdaptor.success(
+        "Technical master template fetched successfully.",
+        new TechnicalMasterDto.Template(projectId, series, sections));
+  }
+
+  // ── Read ───────────────────────────────────────────────────────────────────
 
   @Override
   @Transactional(readOnly = true)
@@ -75,56 +102,67 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
   @Transactional(readOnly = true)
   public ApiResponse<?> getSummary(Long projectId) {
     ProjectMaster project = requireProject(projectId);
+    Integer series = seriesCodeOf(project);
+    List<TmField> template = series == null ? List.of() : tmFieldRepo.findByCategorySeries(series);
+    long totalFields = template.size();
+    long sectionCount = template.stream().map(TmField::getSection).distinct().count();
+
     ProjectTechnicalMaster master = technicalMasterRepo.findByProject_Id(projectId).orElse(null);
     TechnicalMasterDto.ClientInfo clientInfo =
         new TechnicalMasterDto.ClientInfo(project.getClient(), project.getLocation());
 
     if (master == null) {
-      TechnicalMasterDto.Summary shell =
+      return apiResponseAdaptor.success(
+          "Technical master has not been created for this project yet.",
           new TechnicalMasterDto.Summary(
               false,
-              project.getId(),
+              projectId,
               null,
-              null,
+              totalFields,
               0L,
-              0L,
-              0L,
+              sectionCount,
               0L,
               clientInfo,
               false,
               null,
               null,
               null,
-              null);
-      return apiResponseAdaptor.success(
-          "Technical master has not been created for this project yet.", shell);
+              null));
     }
-
-    Long masterId = master.getId();
-    TechnicalMasterDto.Summary summary =
+    long filled = fieldValueRepo.findByTechnicalMaster_Id(master.getId()).size();
+    long attachments = attachmentRepo.countByTechnicalMaster_Id(master.getId());
+    return apiResponseAdaptor.success(
+        "Technical master summary fetched successfully.",
         new TechnicalMasterDto.Summary(
             true,
-            project.getId(),
+            projectId,
             master.getRemarks(),
-            master.getVersion(),
-            parameterRepo.countByTechnicalMaster_IdAndScope(masterId, "COMMON"),
-            parameterRepo.countByTechnicalMaster_IdAndScope(masterId, "CATEGORY_SPECIFIC"),
-            didRepo.countByTechnicalMaster_Id(masterId),
-            attachmentRepo.countByTechnicalMaster_Id(masterId),
+            totalFields,
+            filled,
+            sectionCount,
+            attachments,
             clientInfo,
             true,
             master.getCreatedBy(),
             master.getCreatedDate(),
             master.getUpdatedBy(),
-            master.getUpdatedDate());
-    return apiResponseAdaptor.success("Technical master summary fetched successfully.", summary);
+            master.getUpdatedDate()));
   }
+
+  // ── Create / maintain ──────────────────────────────────────────────────────
 
   @Override
   @Transactional
   public ApiResponse<?> upsert(Long projectId, TechnicalMasterDto.UpsertRequest request) {
     ProjectMaster project = requireProject(projectId);
     Long currentUser = SecurityUtils.getUserId().orElse(null);
+    Integer series = seriesCodeOf(project);
+    Set<String> templateKeys =
+        series == null
+            ? Set.of()
+            : tmFieldRepo.findByCategorySeries(series).stream()
+                .map(TmField::getFieldKey)
+                .collect(Collectors.toSet());
 
     ProjectTechnicalMaster master =
         technicalMasterRepo
@@ -132,11 +170,31 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
             .orElseGet(() -> newMaster(project, currentUser));
     master.setRemarks(trimToNull(request.remarks()));
     master.setUpdatedBy(currentUser);
-    // Persist (and get the id for new masters) before replacing child collections.
     master = technicalMasterRepo.saveAndFlush(master);
 
-    replaceParameters(master, request.parameters(), currentUser);
-    replaceDidSpecifications(master, request.didSpecifications(), currentUser);
+    Map<String, String> values = request.values() == null ? Map.of() : request.values();
+    for (String key : values.keySet()) {
+      if (!templateKeys.contains(key)) {
+        throw new ApplicationException("Unknown technical field for this category: " + key);
+      }
+    }
+
+    fieldValueRepo.deleteByTechnicalMaster_Id(master.getId());
+    // Flush deletes before inserting replacements to avoid an INSERT-before-DELETE clash on
+    // uq_tm_value (mirrors the pattern in ProjectServiceImpl.replaceLeads).
+    fieldValueRepo.flush();
+    for (Map.Entry<String, String> entry : values.entrySet()) {
+      String value = trimToNull(entry.getValue());
+      if (value == null) {
+        continue;
+      }
+      ProjectTechnicalFieldValue row = new ProjectTechnicalFieldValue();
+      row.setTechnicalMaster(master);
+      row.setFieldKey(entry.getKey());
+      row.setValue(value);
+      row.setCreatedBy(currentUser);
+      fieldValueRepo.save(row);
+    }
 
     logActivity(project, "TECHNICAL_MASTER_SAVED", "Technical master saved");
     log.info("Saved technicalMasterId={} for projectId={}", master.getId(), projectId);
@@ -144,14 +202,13 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
         "Technical master saved successfully.", toResponse(project, master));
   }
 
-  // ── Attachments ──────────────────────────────────────────────────────────────
+  // ── Attachments ────────────────────────────────────────────────────────────
 
   @Override
   @Transactional
   public ApiResponse<?> uploadAttachment(Long projectId, MultipartFile file) {
     ProjectMaster project = requireProject(projectId);
     Long currentUser = SecurityUtils.getUserId().orElse(null);
-    // An attachment can be uploaded before the form is saved; lazily create the shell master.
     ProjectTechnicalMaster master =
         technicalMasterRepo
             .findByProject_Id(projectId)
@@ -186,7 +243,6 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
     attachment.setCreatedBy(currentUser);
     attachment = attachmentRepo.save(attachment);
     logActivity(project, "TECHNICAL_ATTACHMENT_UPLOADED", originalName);
-    log.info("Uploaded technicalAttachmentId={} for projectId={}", attachment.getId(), projectId);
     return apiResponseAdaptor.success("Attachment uploaded successfully.", toMetadata(attachment));
   }
 
@@ -194,9 +250,8 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
   @Transactional(readOnly = true)
   public ApiResponse<?> listAttachments(Long projectId) {
     requireProject(projectId);
-    List<TechnicalMasterDto.AttachmentMetadata> items =
-        attachmentRepo.findMetadataByProjectId(projectId);
-    return apiResponseAdaptor.success("Attachments fetched successfully.", items);
+    return apiResponseAdaptor.success(
+        "Attachments fetched successfully.", attachmentRepo.findMetadataByProjectId(projectId));
   }
 
   @Override
@@ -219,76 +274,6 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  private ProjectTechnicalMaster newMaster(ProjectMaster project, Long currentUser) {
-    ProjectTechnicalMaster master = new ProjectTechnicalMaster();
-    master.setProject(project);
-    master.setActive(Boolean.TRUE);
-    master.setCreatedBy(currentUser);
-    return master;
-  }
-
-  private void replaceParameters(
-      ProjectTechnicalMaster master,
-      List<TechnicalMasterDto.ParameterRequest> requests,
-      Long user) {
-    parameterRepo.deleteByTechnicalMaster_Id(master.getId());
-    // Flush deletes before inserting replacements so Hibernate doesn't order the new INSERTs ahead
-    // of the DELETEs in one flush and trip uq_tech_param (mirrors ProjectServiceImpl.replaceLeads).
-    parameterRepo.flush();
-    if (requests == null || requests.isEmpty()) {
-      return;
-    }
-    Set<String> seen = new LinkedHashSet<>();
-    for (TechnicalMasterDto.ParameterRequest req : requests) {
-      if (req == null) {
-        continue;
-      }
-      String scope = validateScope(req.scope());
-      if (req.technicalFieldId() == null) {
-        throw new ApplicationException("Parameter technicalFieldId is required.");
-      }
-      if (!seen.add(scope + ":" + req.technicalFieldId())) {
-        throw new DuplicateResourceException(
-            "Duplicate parameter for the same technical field within a scope.");
-      }
-      TechnicalMaster field = requireTechnicalField(req.technicalFieldId());
-      UnitMaster unit = resolveUnit(req.unitId());
-
-      ProjectTechnicalParameter parameter = new ProjectTechnicalParameter();
-      parameter.setTechnicalMaster(master);
-      parameter.setScope(scope);
-      parameter.setTechnicalField(field);
-      parameter.setUnit(unit);
-      parameter.setValue(trimToNull(req.value()));
-      parameter.setRemarks(trimToNull(req.remarks()));
-      parameter.setCreatedBy(user);
-      parameterRepo.save(parameter);
-    }
-  }
-
-  private void replaceDidSpecifications(
-      ProjectTechnicalMaster master, List<TechnicalMasterDto.DidRequest> requests, Long user) {
-    didRepo.deleteByTechnicalMaster_Id(master.getId());
-    didRepo.flush();
-    if (requests == null || requests.isEmpty()) {
-      return;
-    }
-    for (TechnicalMasterDto.DidRequest req : requests) {
-      if (req == null || req.name() == null || req.name().isBlank()) {
-        continue;
-      }
-      UnitMaster unit = resolveUnit(req.unitId());
-      ProjectDidSpecification did = new ProjectDidSpecification();
-      did.setTechnicalMaster(master);
-      did.setName(req.name().trim());
-      did.setSpecification(trimToNull(req.specification()));
-      did.setUnit(unit);
-      did.setRemarks(trimToNull(req.remarks()));
-      did.setCreatedBy(user);
-      didRepo.save(did);
-    }
-  }
-
   private TechnicalMasterDto.Response toResponse(
       ProjectMaster project, ProjectTechnicalMaster master) {
     List<DeliveryScheduleDto.Response> deliverySchedule =
@@ -304,11 +289,7 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
           null,
           project.getId(),
           null,
-          null,
-          null,
-          List.of(),
-          List.of(),
-          List.of(),
+          Map.of(),
           List.of(),
           deliverySchedule,
           clientInfo,
@@ -317,35 +298,18 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
           null,
           null);
     }
-
-    List<TechnicalMasterDto.ParameterResponse> common = new ArrayList<>();
-    List<TechnicalMasterDto.ParameterResponse> categorySpecific = new ArrayList<>();
-    for (ProjectTechnicalParameter p :
-        parameterRepo.findByTechnicalMaster_IdOrderByScopeAscIdAsc(master.getId())) {
-      TechnicalMasterDto.ParameterResponse mapped = toParameterResponse(p);
-      if ("CATEGORY_SPECIFIC".equals(p.getScope())) {
-        categorySpecific.add(mapped);
-      } else {
-        common.add(mapped);
-      }
+    Map<String, String> values = new LinkedHashMap<>();
+    for (ProjectTechnicalFieldValue v : fieldValueRepo.findByTechnicalMaster_Id(master.getId())) {
+      values.put(v.getFieldKey(), v.getValue());
     }
-    List<TechnicalMasterDto.DidResponse> dids =
-        didRepo.findByTechnicalMaster_IdOrderByIdAsc(master.getId()).stream()
-            .map(this::toDidResponse)
-            .toList();
     List<TechnicalMasterDto.AttachmentMetadata> attachments =
         attachmentRepo.findMetadataByProjectId(project.getId());
-
     return new TechnicalMasterDto.Response(
         true,
         master.getId(),
         project.getId(),
         master.getRemarks(),
-        master.getVersion(),
-        master.getActive(),
-        common,
-        categorySpecific,
-        dids,
+        values,
         attachments,
         deliverySchedule,
         clientInfo,
@@ -353,31 +317,6 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
         master.getCreatedDate(),
         master.getUpdatedBy(),
         master.getUpdatedDate());
-  }
-
-  private TechnicalMasterDto.ParameterResponse toParameterResponse(ProjectTechnicalParameter p) {
-    TechnicalMaster field = p.getTechnicalField();
-    UnitMaster unit = p.getUnit();
-    return new TechnicalMasterDto.ParameterResponse(
-        p.getId(),
-        p.getScope(),
-        field == null ? null : field.getId(),
-        field == null ? null : field.getName(),
-        unit == null ? null : unit.getId(),
-        unit == null ? null : unit.getSymbol(),
-        p.getValue(),
-        p.getRemarks());
-  }
-
-  private TechnicalMasterDto.DidResponse toDidResponse(ProjectDidSpecification d) {
-    UnitMaster unit = d.getUnit();
-    return new TechnicalMasterDto.DidResponse(
-        d.getId(),
-        d.getName(),
-        d.getSpecification(),
-        unit == null ? null : unit.getId(),
-        unit == null ? null : unit.getSymbol(),
-        d.getRemarks());
   }
 
   private DeliveryScheduleDto.Response toDeliveryResponse(ProjectDeliverySchedule d) {
@@ -404,6 +343,18 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
         a.getCreatedDate());
   }
 
+  private ProjectTechnicalMaster newMaster(ProjectMaster project, Long currentUser) {
+    ProjectTechnicalMaster master = new ProjectTechnicalMaster();
+    master.setProject(project);
+    master.setActive(Boolean.TRUE);
+    master.setCreatedBy(currentUser);
+    return master;
+  }
+
+  private static Integer seriesCodeOf(ProjectMaster project) {
+    return project.getCategory() == null ? null : project.getCategory().getSeriesCode();
+  }
+
   private ProjectMaster requireProject(Long projectId) {
     return projectRepo
         .findById(projectId)
@@ -416,21 +367,6 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
         .orElseThrow(() -> new ResourceNotFoundException("Attachment not found."));
   }
 
-  private TechnicalMaster requireTechnicalField(Long id) {
-    return technicalFieldRepo
-        .findById(id)
-        .orElseThrow(() -> new ResourceNotFoundException("Technical field not found: " + id));
-  }
-
-  private UnitMaster resolveUnit(Long unitId) {
-    if (unitId == null) {
-      return null;
-    }
-    return unitRepo
-        .findById(unitId)
-        .orElseThrow(() -> new ResourceNotFoundException("Unit not found: " + unitId));
-  }
-
   private void logActivity(ProjectMaster project, String action, String detail) {
     ProjectActivityLog entry = new ProjectActivityLog();
     entry.setProject(project);
@@ -438,14 +374,6 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
     entry.setDetail(detail);
     entry.setCreatedBy(SecurityUtils.getUserId().orElse(null));
     activityRepo.save(entry);
-  }
-
-  private static String validateScope(String raw) {
-    String value = raw == null ? "" : raw.trim().toUpperCase().replace('-', '_').replace(' ', '_');
-    if (!SCOPES.contains(value)) {
-      throw new ApplicationException("Parameter scope must be one of: COMMON, CATEGORY_SPECIFIC.");
-    }
-    return value;
   }
 
   private static String extensionOf(String fileName) {

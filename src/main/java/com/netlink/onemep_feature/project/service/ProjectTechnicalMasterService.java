@@ -9,10 +9,13 @@ import org.springframework.web.multipart.MultipartFile;
  */
 public interface ProjectTechnicalMasterService {
 
+  /** The form definition (sections + fields) for the project's category. */
+  ApiResponse<?> getTemplate(Long projectId);
+
   /** Consolidated read; returns a {@code exists:false} shell when none created yet. */
   ApiResponse<?> get(Long projectId);
 
-  /** Compact read-only summary (key info + counts + version details) for ONEMEP-30. */
+  /** Compact read-only summary (counts + audit) for ONEMEP-30. */
   ApiResponse<?> getSummary(Long projectId);
 
   /** Create-or-replace the Technical Master (root + parameters + DID) for a project. */

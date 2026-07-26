@@ -26,8 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Project-level Technical Master: the consolidated form plus its attachments. Delivery
- * schedule and client information are surfaced read-only within the GET payload.
+ * Project-level Technical Master: the consolidated form plus its attachments. Delivery schedule and
+ * client information are surfaced read-only within the GET payload.
  */
 @RestController
 @RequestMapping("/projects/{projectId}/technical-master")
@@ -35,6 +35,12 @@ import org.springframework.web.multipart.MultipartFile;
 public class ProjectTechnicalMasterController {
 
   private final ProjectTechnicalMasterService technicalMasterService;
+
+  /** Form definition (sections + fields) for the project's category. */
+  @GetMapping("/template")
+  public ResponseEntity<ApiResponse<?>> template(@PathVariable @NotNull Long projectId) {
+    return ResponseEntity.ok(technicalMasterService.getTemplate(projectId));
+  }
 
   /** Consolidated read; returns an {@code exists:false} shell when none created yet. */
   @GetMapping
