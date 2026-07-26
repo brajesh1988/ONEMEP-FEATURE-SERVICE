@@ -140,10 +140,11 @@ class ProjectServiceImplTest {
   }
 
   @Test
-  void create_confirmed_generatesSeriesNumber_andLocksType() {
+  void create_confirmed_generatesPrefixNumber_andLocksType() {
     CategoryMaster category = category(10L, "HTL", "Hotel", 4);
     when(projectRepo.findByNameIgnoreCase("Marina")).thenReturn(Optional.empty());
     when(categoryRepo.findById(10L)).thenReturn(Optional.of(category));
+    when(categoryRepo.findByIdForUpdate(10L)).thenReturn(Optional.of(category));
     when(projectRepo.saveAndFlush(any(ProjectMaster.class)))
         .thenAnswer(
             inv -> {
@@ -160,23 +161,40 @@ class ProjectServiceImplTest {
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
 
-    assertThat(data.projectNumber()).isEqualTo("40012");
+    // prefix HTL + first counter (lastNumber NULL → 1), zero-padded to 4.
+    assertThat(data.projectNumber()).isEqualTo("HTL0001");
+    assertThat(category.getLastNumber()).isEqualTo(1);
     assertThat(data.type()).isEqualTo("CONFIRMED");
     assertThat(data.typeLocked()).isTrue();
   }
 
   @Test
-  void create_confirmedWithoutSeriesCode_throws() {
-    CategoryMaster category = category(10L, "INF", "Infrastructure", null);
-    when(projectRepo.findByNameIgnoreCase("NoSeries")).thenReturn(Optional.empty());
+  void create_confirmed_withSuffix_appendsSuffixAndContinuesCounter() {
+    CategoryMaster category = category(10L, "HTL", "Hotel", 4);
+    category.setSuffix("A");
+    category.setLastNumber(7);
+    when(projectRepo.findByNameIgnoreCase("Marina")).thenReturn(Optional.empty());
     when(categoryRepo.findById(10L)).thenReturn(Optional.of(category));
+    when(categoryRepo.findByIdForUpdate(10L)).thenReturn(Optional.of(category));
+    when(projectRepo.saveAndFlush(any(ProjectMaster.class)))
+        .thenAnswer(
+            inv -> {
+              ProjectMaster p = inv.getArgument(0);
+              p.setId(12L);
+              return p;
+            });
+    when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(memberRepo.findByProject_Id(12L)).thenReturn(List.of());
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
-            "NoSeries", 10L, "CONFIRMED", "LOW", null, null, null, null, null, null, null);
+            "Marina", 10L, "CONFIRMED", "MEDIUM", "ACTIVE", null, null, null, null, null, null);
 
-    assertThatThrownBy(() -> service.create(request)).isInstanceOf(ApplicationException.class);
-    verify(projectRepo, never()).saveAndFlush(any());
+    ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
+
+    // counter 7 → 8, prefix HTL, suffix A.
+    assertThat(data.projectNumber()).isEqualTo("HTL0008A");
+    assertThat(category.getLastNumber()).isEqualTo(8);
   }
 
   @Test
@@ -267,13 +285,14 @@ class ProjectServiceImplTest {
     existing.setTypeLocked(false);
     when(projectRepo.findById(1L)).thenReturn(Optional.of(existing));
     when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(categoryRepo.findByIdForUpdate(10L)).thenReturn(Optional.of(existing.getCategory()));
     when(memberRepo.findByProject_Id(1L)).thenReturn(List.of());
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.updateType(1L, "CONFIRMED").getData();
 
     assertThat(data.type()).isEqualTo("CONFIRMED");
     assertThat(data.typeLocked()).isTrue();
-    assertThat(data.projectNumber()).isEqualTo("60001"); // series 6 + id 0001
+    assertThat(data.projectNumber()).isEqualTo("INF0001"); // prefix INF + first counter
   }
 
   @Test

@@ -1,10 +1,12 @@
 package com.netlink.onemep_feature.category.repo;
 
 import com.netlink.onemep_feature.category.model.CategoryMaster;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -15,6 +17,14 @@ public interface CategoryRepo
 
   @Query("SELECT c FROM CategoryMaster c WHERE c.active = true ORDER BY c.name ASC")
   List<CategoryMaster> findAllActive();
+
+  /**
+   * Loads a category under a pessimistic write lock so concurrent confirmed-project creations
+   * serialize on the category row while reserving the next running number.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT c FROM CategoryMaster c WHERE c.id = :id")
+  Optional<CategoryMaster> findByIdForUpdate(@Param("id") Long id);
 
   @Query("SELECT c FROM CategoryMaster c WHERE LOWER(c.name) = LOWER(:name)")
   Optional<CategoryMaster> findByNameIgnoreCase(@Param("name") String name);
