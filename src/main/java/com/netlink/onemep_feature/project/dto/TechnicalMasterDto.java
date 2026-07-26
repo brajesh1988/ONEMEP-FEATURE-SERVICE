@@ -32,7 +32,6 @@ public final class TechnicalMasterDto {
       String unit,
       String dataType,
       boolean required,
-      boolean active,
       String feeds,
       String notes) {}
 
@@ -51,8 +50,7 @@ public final class TechnicalMasterDto {
           String label,
       @Size(max = 60, message = "Unit cannot exceed 60 characters.") String unit,
       String dataType,
-      Boolean required,
-      Boolean active) {}
+      Boolean required) {}
 
   // ── Value requests ──────────────────────────────────────────────────────────
 

@@ -94,7 +94,6 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
         f.getUnit(),
         f.getDataType(),
         Boolean.TRUE.equals(f.getRequired()),
-        Boolean.TRUE.equals(f.getActive()),
         f.getFeeds(),
         f.getNotes());
   }
@@ -164,7 +163,6 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
     field.setRequired(Boolean.TRUE.equals(request.required()));
     field.setFeeds("REF");
     field.setFieldOrder((int) fieldRepo.countBySection_Id(section.getId()) + 1);
-    field.setActive(request.active() == null ? Boolean.TRUE : request.active());
     fieldRepo.save(field);
     return apiResponseAdaptor.success("Field added.", buildTemplate(project));
   }
@@ -186,9 +184,6 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
     }
     if (request.required() != null) {
       field.setRequired(request.required());
-    }
-    if (request.active() != null) {
-      field.setActive(request.active());
     }
     fieldRepo.save(field);
     return apiResponseAdaptor.success("Field updated.", buildTemplate(project));
@@ -224,26 +219,22 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
     Long currentUser = SecurityUtils.getUserId().orElse(null);
     Integer series = seriesCodeOf(project);
 
-    List<TmField> activeFields =
-        series == null
-            ? List.of()
-            : fieldRepo.findBySeriesCode(series).stream()
-                .filter(f -> Boolean.TRUE.equals(f.getActive()))
-                .toList();
-    Set<String> activeKeys =
-        activeFields.stream().map(TmField::getFieldKey).collect(Collectors.toSet());
+    List<TmField> catalogFields = series == null ? List.of() : fieldRepo.findBySeriesCode(series);
+    Set<String> knownKeys =
+        catalogFields.stream().map(TmField::getFieldKey).collect(Collectors.toSet());
 
     Map<String, String> values = request.values() == null ? Map.of() : request.values();
     for (String key : values.keySet()) {
-      if (!activeKeys.contains(key)) {
-        throw new ApplicationException("Unknown or inactive technical field: " + key);
+      if (!knownKeys.contains(key)) {
+        throw new ApplicationException("Unknown technical field: " + key);
       }
     }
 
-    // ONEMEP-29: mandatory-field validation — every active required field must have a value.
+    // ONEMEP-29: mandatory-field validation — every required field of a head that is in the
+    // project must have a value. Heads switched off are not part of the sheet.
     List<String> missing = new ArrayList<>();
-    for (TmField f : activeFields) {
-      if (Boolean.TRUE.equals(f.getRequired())) {
+    for (TmField f : catalogFields) {
+      if (Boolean.TRUE.equals(f.getRequired()) && Boolean.TRUE.equals(f.getSection().getActive())) {
         String v = trimToNull(values.get(f.getFieldKey()));
         if (v == null) {
           missing.add(f.getLabel());
@@ -292,7 +283,7 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
         series == null
             ? 0
             : fieldRepo.findBySeriesCode(series).stream()
-                .filter(f -> Boolean.TRUE.equals(f.getActive()))
+                .filter(f -> Boolean.TRUE.equals(f.getSection().getActive()))
                 .count();
     long sectionCount =
         series == null

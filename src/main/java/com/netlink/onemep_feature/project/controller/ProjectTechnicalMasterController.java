@@ -37,7 +37,7 @@ public class ProjectTechnicalMasterController {
 
   private final ProjectTechnicalMasterService technicalMasterService;
 
-  /** Editable form (sections + fields, with active flags) for the project's category. */
+  /** Editable form (heads with their fields; a head carries the in-project flag). */
   @GetMapping("/template")
   public ResponseEntity<ApiResponse<?>> template(@PathVariable @NotNull Long projectId) {
     return ResponseEntity.ok(technicalMasterService.getTemplate(projectId));

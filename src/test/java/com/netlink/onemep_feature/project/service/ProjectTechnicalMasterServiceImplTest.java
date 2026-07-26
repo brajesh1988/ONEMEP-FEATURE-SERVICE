@@ -78,7 +78,7 @@ class ProjectTechnicalMasterServiceImplTest {
     TmSection s = section(5L, 1, "HVAC", 1);
     when(sectionRepo.findBySeriesCodeOrderBySectionOrderAsc(1)).thenReturn(List.of(s));
     when(fieldRepo.findBySection_IdOrderByFieldOrderAsc(5L))
-        .thenReturn(List.of(field(9L, s, 1, "Cooling load basis", "hvac__clb", true, true)));
+        .thenReturn(List.of(field(9L, s, 1, "Cooling load basis", "hvac__clb", true)));
 
     TechnicalMasterDto.Template t = (TechnicalMasterDto.Template) service.getTemplate(1L).getData();
 
@@ -94,8 +94,8 @@ class ProjectTechnicalMasterServiceImplTest {
     when(fieldRepo.findBySeriesCode(1))
         .thenReturn(
             List.of(
-                field(9L, s, 1, "Plot area", "site__plot", true, true),
-                field(10L, s, 1, "Remarks", "site__rem", false, true)));
+                field(9L, s, 1, "Plot area", "site__plot", true),
+                field(10L, s, 1, "Remarks", "site__rem", false)));
 
     TechnicalMasterDto.UpsertRequest req =
         new TechnicalMasterDto.UpsertRequest(null, Map.of("site__rem", "x"));
@@ -108,7 +108,7 @@ class ProjectTechnicalMasterServiceImplTest {
   void upsert_savesWhenRequiredFilled() {
     TmSection s = section(5L, 1, "Site", 1);
     when(fieldRepo.findBySeriesCode(1))
-        .thenReturn(List.of(field(9L, s, 1, "Plot area", "site__plot", true, true)));
+        .thenReturn(List.of(field(9L, s, 1, "Plot area", "site__plot", true)));
     when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
     when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
 
@@ -119,7 +119,21 @@ class ProjectTechnicalMasterServiceImplTest {
   }
 
   @Test
-  void upsert_unknownOrInactiveKey_throws() {
+  void upsert_requiredFieldOfHeadOutOfProject_doesNotBlock() {
+    TmSection off = section(6L, 1, "Kitchen / Laundry", 2);
+    off.setActive(false);
+    when(fieldRepo.findBySeriesCode(1))
+        .thenReturn(List.of(field(11L, off, 1, "Meals per day", "kitchen_laundry__meals", true)));
+    when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
+    when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
+
+    service.upsert(1L, new TechnicalMasterDto.UpsertRequest(null, Map.of()));
+
+    verify(fieldValueRepo).deleteByTechnicalMaster_Id(10L);
+  }
+
+  @Test
+  void upsert_unknownKey_throws() {
     when(fieldRepo.findBySeriesCode(1)).thenReturn(List.of());
 
     assertThatThrownBy(
@@ -137,7 +151,7 @@ class ProjectTechnicalMasterServiceImplTest {
     when(fieldRepo.findBySection_IdOrderByFieldOrderAsc(5L)).thenReturn(List.of());
 
     service.createField(
-        1L, new TechnicalMasterDto.FieldRequest(5L, "New load", "kVA", "NUMBER", true, true));
+        1L, new TechnicalMasterDto.FieldRequest(5L, "New load", "kVA", "NUMBER", true));
 
     verify(fieldRepo).save(any(TmField.class));
   }
@@ -185,13 +199,7 @@ class ProjectTechnicalMasterServiceImplTest {
   }
 
   private static TmField field(
-      Long id,
-      TmSection s,
-      int series,
-      String label,
-      String key,
-      boolean required,
-      boolean active) {
+      Long id, TmSection s, int series, String label, String key, boolean required) {
     TmField f = new TmField();
     f.setId(id);
     f.setSection(s);
@@ -200,7 +208,6 @@ class ProjectTechnicalMasterServiceImplTest {
     f.setFieldKey(key);
     f.setDataType("TEXT");
     f.setRequired(required);
-    f.setActive(active);
     f.setFeeds("REF");
     f.setFieldOrder(1);
     return f;

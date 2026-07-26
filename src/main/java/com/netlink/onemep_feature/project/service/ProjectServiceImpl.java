@@ -74,6 +74,9 @@ public class ProjectServiceImpl implements ProjectService {
   private static final Set<String> PRIORITY = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
   private static final Set<String> TYPES = Set.of("CONFIRMED", "NON_CONFIRMED");
 
+  /** Design stages, in order: concept → schematic → detailed → tender → GFC → as-built. */
+  private static final Set<String> STAGES = Set.of("CON", "SD", "DD", "TS", "GFC", "AB");
+
   /** Lifecycle transitions that require the user to supply a reason (ONEMEP-12/14/15). */
   private static final Set<String> REASON_REQUIRED = Set.of("ON_HOLD", "CLOSED");
 
@@ -162,6 +165,7 @@ public class ProjectServiceImpl implements ProjectService {
     project.setTypeLocked("CONFIRMED".equals(type));
     project.setPriority(priority);
     project.setLifecycleStatus(lifecycle);
+    project.setCurrentStage(validateStage(request.currentStage()));
     project.setClient(trimToNull(request.client()));
     project.setLocation(trimToNull(request.location()));
     project.setHandlingOffice(resolveHandlingOffice(request.handlingOfficeId()));
@@ -267,6 +271,7 @@ public class ProjectServiceImpl implements ProjectService {
     // project_number and category are intentionally NOT updated — they are protected.
     String oldLifecycle = project.getLifecycleStatus();
     String oldPriority = project.getPriority();
+    String oldStage = project.getCurrentStage();
 
     project.setName(name);
     project.setPriority(validatePriority(request.priority()));
@@ -277,6 +282,7 @@ public class ProjectServiceImpl implements ProjectService {
       requireReasonIfNeeded(newLifecycle, reason);
     }
     project.setLifecycleStatus(newLifecycle);
+    project.setCurrentStage(validateStage(request.currentStage()));
 
     project.setClient(trimToNull(request.client()));
     project.setLocation(trimToNull(request.location()));
@@ -309,6 +315,13 @@ public class ProjectServiceImpl implements ProjectService {
       logActivity(project, "PRIORITY_CHANGED", oldPriority + " → " + project.getPriority(), null);
       notificationService.notifyPriorityChanged(
           project, oldPriority, project.getPriority(), actor, leadIds);
+    }
+    if (!Objects.equals(oldStage, project.getCurrentStage())) {
+      logActivity(
+          project,
+          "STAGE_CHANGED",
+          (oldStage == null ? "—" : oldStage) + " → " + project.getCurrentStage(),
+          null);
     }
     if (confirmed) {
       logActivity(
@@ -598,6 +611,18 @@ public class ProjectServiceImpl implements ProjectService {
     return value;
   }
 
+  /** Optional — a project may have no recorded stage yet. */
+  private static String validateStage(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    String value = raw.trim().toUpperCase();
+    if (!STAGES.contains(value)) {
+      throw new ApplicationException("Current stage must be one of: CON, SD, DD, TS, GFC, AB.");
+    }
+    return value;
+  }
+
   private static String validateLifecycle(String raw) {
     String value = raw == null ? "" : raw.trim().toUpperCase();
     if (!LIFECYCLE.contains(value)) {
@@ -765,6 +790,7 @@ public class ProjectServiceImpl implements ProjectService {
         p.getTypeLocked(),
         p.getLifecycleStatus(),
         p.getPriority(),
+        p.getCurrentStage(),
         p.getClient(),
         p.getLocation(),
         office == null ? null : office.getId(),

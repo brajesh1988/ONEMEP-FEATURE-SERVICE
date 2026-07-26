@@ -12,8 +12,6 @@ public interface TmFieldRepo extends JpaRepository<TmField, Long> {
 
   List<TmField> findBySeriesCode(Integer seriesCode);
 
-  List<TmField> findBySeriesCodeAndActiveTrueAndRequiredTrue(Integer seriesCode);
-
   boolean existsBySeriesCodeAndFieldKey(Integer seriesCode, String fieldKey);
 
   long countBySection_Id(Long sectionId);

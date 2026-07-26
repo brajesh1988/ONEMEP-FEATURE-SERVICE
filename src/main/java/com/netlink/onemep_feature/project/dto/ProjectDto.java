@@ -37,6 +37,7 @@ public final class ProjectDto {
       @NotBlank(message = "Type is required.") String type,
       @NotBlank(message = "Priority is required.") String priority,
       String lifecycleStatus,
+      String currentStage,
       @Size(max = 50, message = "Client cannot exceed 50 characters.")
           @Pattern(regexp = NAME_PATTERN, message = NAME_MSG)
           String client,
@@ -56,6 +57,7 @@ public final class ProjectDto {
           String name,
       @NotBlank(message = "Priority is required.") String priority,
       @NotBlank(message = "Lifecycle is required.") String lifecycleStatus,
+      String currentStage,
       String type,
       @Size(max = 50, message = "Client cannot exceed 50 characters.")
           @Pattern(regexp = NAME_PATTERN, message = NAME_MSG)
@@ -109,6 +111,7 @@ public final class ProjectDto {
       Boolean typeLocked,
       String lifecycleStatus,
       String priority,
+      String currentStage,
       String client,
       String location,
       Long handlingOfficeId,

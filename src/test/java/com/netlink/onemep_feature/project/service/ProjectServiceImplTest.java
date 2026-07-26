@@ -117,6 +117,7 @@ class ProjectServiceImplTest {
             "NON_CONFIRMED",
             "HIGH",
             null,
+            "SD",
             "Acme Corp",
             "Dubai",
             null,
@@ -134,6 +135,7 @@ class ProjectServiceImplTest {
     assertThat(data.typeLocked()).isFalse();
     assertThat(data.lifecycleStatus()).isEqualTo("ACTIVE");
     assertThat(data.priority()).isEqualTo("HIGH");
+    assertThat(data.currentStage()).isEqualTo("SD");
     assertThat(data.client()).isEqualTo("Acme Corp");
     assertThat(data.leadUserIds()).containsExactly(1L, 3L);
     verify(memberRepo).flush();
@@ -157,7 +159,8 @@ class ProjectServiceImplTest {
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
-            "Marina", 10L, "CONFIRMED", "MEDIUM", "ACTIVE", null, null, null, null, null, null);
+            "Marina", 10L, "CONFIRMED", "MEDIUM", "ACTIVE", null, null, null, null, null, null,
+            null);
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
 
@@ -188,7 +191,8 @@ class ProjectServiceImplTest {
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
-            "Marina", 10L, "CONFIRMED", "MEDIUM", "ACTIVE", null, null, null, null, null, null);
+            "Marina", 10L, "CONFIRMED", "MEDIUM", "ACTIVE", null, null, null, null, null, null,
+            null);
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
 
@@ -224,6 +228,7 @@ class ProjectServiceImplTest {
             null,
             null,
             null,
+            null,
             List.of(new ProjectDto.MemberRequest(999999L, 5L)));
 
     assertThatThrownBy(() -> service.create(request)).isInstanceOf(ResourceNotFoundException.class);
@@ -239,7 +244,8 @@ class ProjectServiceImplTest {
 
     ProjectDto.UpdateRequest request =
         new ProjectDto.UpdateRequest(
-            "Apollo II", "CRITICAL", "COMPLETED", null, null, null, null, null, null, "upd", null);
+            "Apollo II", "CRITICAL", "COMPLETED", "DD", null, null, null, null, null, null, "upd",
+            null);
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.update(1L, request).getData();
 
@@ -262,7 +268,7 @@ class ProjectServiceImplTest {
 
     ProjectDto.UpdateRequest request =
         new ProjectDto.UpdateRequest(
-            "Apollo", "MEDIUM", "ON_HOLD", null, null, null, null, null, null, null, null);
+            "Apollo", "MEDIUM", "ON_HOLD", null, null, null, null, null, null, null, null, null);
 
     assertThatThrownBy(() -> service.update(1L, request)).isInstanceOf(ApplicationException.class);
   }

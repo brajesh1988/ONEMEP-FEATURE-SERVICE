@@ -10,7 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
  */
 public interface ProjectTechnicalMasterService {
 
-  /** The editable form (all sections + fields, with active flags) for the project's category. */
+  /** The editable form (all heads with their fields) for the project's category. */
   ApiResponse<?> getTemplate(Long projectId);
 
   // ── Catalog edits (affect the whole category / all its projects) ────────────
