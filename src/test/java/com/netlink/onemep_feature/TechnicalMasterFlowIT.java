@@ -3,13 +3,15 @@ package com.netlink.onemep_feature;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,9 +28,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * End-to-end flow for the project-level Technical Master (ONEMEP-29): empty-state shell → create
- * with parameters + DID → consolidated read (with read-only client info) → attachment
- * upload/download → replace → and the 400/404/409 guards.
+ * End-to-end flow for the editable, category-driven Technical Master (ONEMEP-29): the seeded
+ * template per category, building a form from scratch (add head + fields) on a custom category,
+ * saving values, the mandatory-field save block, toggling a field inactive to unblock, and
+ * attachments.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -56,150 +59,131 @@ class TechnicalMasterFlowIT {
   @Autowired private ObjectMapper objectMapper;
 
   @Test
-  void technicalMasterFlow_shell_upsert_attachment_replace_andGuards() throws Exception {
-    long categoryId =
+  void technicalMaster_seededTemplate_dynamicBuild_validation_andAttachments() throws Exception {
+    // Seeded category 1 (Commercial) has a non-trivial template.
+    long commercialProject =
         idOf(
-            perform(post("/categories").content("{\"name\":\"Electrical\",\"prefix\":\"el\"}"))
+            perform(
+                    post("/projects")
+                        .content(
+                            "{\"name\":\"Commercial"
+                                + " One\",\"categoryId\":1,\"type\":\"NON_CONFIRMED\","
+                                + "\"priority\":\"MEDIUM\"}"))
                 .andExpect(status().isCreated())
                 .andReturn());
+    perform(get("/projects/" + commercialProject + "/technical-master/template"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.seriesCode").value(1))
+        .andExpect(jsonPath("$.data.sections.length()").value(Matchers.greaterThan(5)));
 
+    // A custom category (series 99) starts with no fields — build the form from scratch.
+    long customCat =
+        idOf(
+            perform(
+                    post("/categories")
+                        .content("{\"name\":\"Custom\",\"prefix\":\"cst\",\"seriesCode\":99}"))
+                .andExpect(status().isCreated())
+                .andReturn());
     long projectId =
         idOf(
             perform(
                     post("/projects")
                         .content(
-                            "{\"name\":\"Helios\",\"categoryId\":"
-                                + categoryId
+                            "{\"name\":\"Custom Build\",\"categoryId\":"
+                                + customCat
                                 + ",\"type\":\"NON_CONFIRMED\",\"priority\":\"MEDIUM\","
                                 + "\"client\":\"Acme\",\"location\":\"Dubai\"}"))
                 .andExpect(status().isCreated())
                 .andReturn());
 
-    // Catalog technical field the parameters will reference (reusable across projects).
-    long fieldId =
-        idOf(
-            perform(post("/technical-master").content("{\"name\":\"Voltage\"}"))
+    perform(get("/projects/" + projectId + "/technical-master/template"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.sections.length()").value(0));
+
+    // Add head.
+    JsonNode t1 =
+        dataOf(
+            perform(
+                    post("/projects/" + projectId + "/technical-master/sections")
+                        .content("{\"title\":\"General\"}"))
                 .andExpect(status().isCreated())
                 .andReturn());
+    long sectionId = t1.get("sections").get(0).get("id").asLong();
 
-    // Empty-state: GET before creation returns a 200 shell, not 404, with read-only client info.
-    perform(get("/projects/" + projectId + "/technical-master"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.exists").value(false))
-        .andExpect(jsonPath("$.data.clientInfo.client").value("Acme"))
-        .andExpect(jsonPath("$.data.commonParameters").isEmpty());
-
-    // ONEMEP-30 summary before creation: exists:false shell with zero counts.
-    perform(get("/projects/" + projectId + "/technical-master/summary"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.exists").value(false))
-        .andExpect(jsonPath("$.data.editable").value(false))
-        .andExpect(jsonPath("$.data.commonParameterCount").value(0));
-
-    // Create/maintain: upsert with a common parameter + a DID specification.
-    perform(
-            put("/projects/" + projectId + "/technical-master")
-                .content(
-                    "{\"remarks\":\"general inputs\",\"parameters\":[{\"scope\":\"COMMON\","
-                        + "\"technicalFieldId\":"
-                        + fieldId
-                        + ",\"value\":\"230\"}],\"didSpecifications\":[{\"name\":\"Input Voltage\","
-                        + "\"specification\":\"230V\"}]}"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.exists").value(true))
-        .andExpect(jsonPath("$.data.commonParameters[0].technicalFieldName").value("Voltage"))
-        .andExpect(jsonPath("$.data.commonParameters[0].value").value("230"))
-        .andExpect(jsonPath("$.data.didSpecifications[0].name").value("Input Voltage"));
-
-    // Read back the consolidated form.
-    perform(get("/projects/" + projectId + "/technical-master"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.exists").value(true))
-        .andExpect(jsonPath("$.data.remarks").value("general inputs"))
-        .andExpect(jsonPath("$.data.clientInfo.location").value("Dubai"));
-
-    // ONEMEP-30 summary after creation: counts + version details.
-    perform(get("/projects/" + projectId + "/technical-master/summary"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.exists").value(true))
-        .andExpect(jsonPath("$.data.editable").value(true))
-        .andExpect(jsonPath("$.data.commonParameterCount").value(1))
-        .andExpect(jsonPath("$.data.didSpecificationCount").value(1))
-        .andExpect(jsonPath("$.data.version").isNumber());
-
-    // Summary for an unknown project → 404.
-    perform(get("/projects/999999/technical-master/summary"))
-        .andExpect(status().isNotFound())
-        .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"));
-
-    // Attachment: upload → download bytes → guard on disallowed extension.
-    MockMultipartFile file =
-        new MockMultipartFile("file", "calc.pdf", "application/pdf", "PDF-BYTES".getBytes());
-    long attachmentId =
-        idOf(
-            mockMvc
-                .perform(
-                    multipart("/projects/" + projectId + "/technical-master/attachments")
-                        .file(file)
-                        .with(jwt().jwt(j -> j.subject("1"))))
+    // Add an optional field under the head.
+    JsonNode t2 =
+        dataOf(
+            perform(
+                    post("/projects/" + projectId + "/technical-master/fields")
+                        .content(
+                            "{\"sectionId\":"
+                                + sectionId
+                                + ",\"label\":\"Plot"
+                                + " area\",\"unit\":\"m²\",\"dataType\":\"NUMBER\","
+                                + "\"required\":false}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.fileExtension").value("pdf"))
                 .andReturn());
+    String plotKey = t2.get("sections").get(0).get("fields").get(0).get("key").asText();
 
-    mockMvc
-        .perform(
-            get("/projects/"
-                    + projectId
-                    + "/technical-master/attachments/"
-                    + attachmentId
-                    + "/download")
-                .with(jwt().jwt(j -> j.subject("1"))))
+    // Save a value.
+    perform(
+            put("/projects/" + projectId + "/technical-master")
+                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
         .andExpect(status().isOk())
-        .andExpect(content().bytes("PDF-BYTES".getBytes()));
+        .andExpect(jsonPath("$.data.exists").value(true))
+        .andExpect(jsonPath("$.data.values['" + plotKey + "']").value("1000"));
 
-    mockMvc
-        .perform(
-            multipart("/projects/" + projectId + "/technical-master/attachments")
-                .file(new MockMultipartFile("file", "notes.txt", "text/plain", "x".getBytes()))
-                .with(jwt().jwt(j -> j.subject("1"))))
-        .andExpect(status().isBadRequest());
+    // Add a MANDATORY field.
+    JsonNode t3 =
+        dataOf(
+            perform(
+                    post("/projects/" + projectId + "/technical-master/fields")
+                        .content(
+                            "{\"sectionId\":"
+                                + sectionId
+                                + ",\"label\":\"Mandatory"
+                                + " field\",\"dataType\":\"TEXT\",\"required\":true}"))
+                .andExpect(status().isCreated())
+                .andReturn());
+    JsonNode fields = t3.get("sections").get(0).get("fields");
+    long mandatoryId = -1;
+    for (JsonNode f : fields) {
+      if (f.get("required").asBoolean()) {
+        mandatoryId = f.get("id").asLong();
+      }
+    }
 
-    // Guard: unknown technical field → 404.
+    // Save now blocked: the mandatory field is empty.
     perform(
             put("/projects/" + projectId + "/technical-master")
-                .content("{\"parameters\":[{\"scope\":\"COMMON\",\"technicalFieldId\":999999}]}"))
-        .andExpect(status().isNotFound())
-        .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"));
-
-    // Guard: invalid scope → 400.
-    perform(
-            put("/projects/" + projectId + "/technical-master")
-                .content(
-                    "{\"parameters\":[{\"scope\":\"BOGUS\",\"technicalFieldId\":"
-                        + fieldId
-                        + "}]}"))
+                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
 
-    // Guard: duplicate parameter (same scope + field) → 409.
+    // Deactivate the mandatory field → save is unblocked.
+    perform(
+            patch("/projects/" + projectId + "/technical-master/fields/" + mandatoryId)
+                .content("{\"active\":false}"))
+        .andExpect(status().isOk());
     perform(
             put("/projects/" + projectId + "/technical-master")
-                .content(
-                    "{\"parameters\":[{\"scope\":\"COMMON\",\"technicalFieldId\":"
-                        + fieldId
-                        + "},{\"scope\":\"COMMON\",\"technicalFieldId\":"
-                        + fieldId
-                        + "}]}"))
-        .andExpect(status().isConflict())
-        .andExpect(jsonPath("$.error.code").value("DUPLICATE_RESOURCE"));
+                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
+        .andExpect(status().isOk());
 
-    // Replace with an empty form → parameters cleared, still exists.
-    perform(
-            put("/projects/" + projectId + "/technical-master")
-                .content("{\"parameters\":[],\"didSpecifications\":[]}"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.commonParameters").isEmpty())
-        .andExpect(jsonPath("$.data.didSpecifications").isEmpty());
+    // Attachment upload + type guard.
+    mockMvc
+        .perform(
+            multipart("/projects/" + projectId + "/technical-master/attachments")
+                .file(
+                    new MockMultipartFile("file", "basis.pdf", "application/pdf", "PDF".getBytes()))
+                .with(jwt().jwt(j -> j.subject("1"))))
+        .andExpect(status().isCreated());
+    mockMvc
+        .perform(
+            multipart("/projects/" + projectId + "/technical-master/attachments")
+                .file(new MockMultipartFile("file", "x.txt", "text/plain", "x".getBytes()))
+                .with(jwt().jwt(j -> j.subject("1"))))
+        .andExpect(status().isBadRequest());
   }
 
   private org.springframework.test.web.servlet.ResultActions perform(
@@ -215,5 +199,9 @@ class TechnicalMasterFlowIT {
         .path("data")
         .path("id")
         .asLong();
+  }
+
+  private JsonNode dataOf(MvcResult result) throws Exception {
+    return objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
   }
 }

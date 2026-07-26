@@ -16,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -26,8 +27,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Project-level Technical Master: the consolidated form plus its attachments. Delivery
- * schedule and client information are surfaced read-only within the GET payload.
+ * Project-level Technical Master: the consolidated form plus its attachments. Delivery schedule and
+ * client information are surfaced read-only within the GET payload.
  */
 @RestController
 @RequestMapping("/projects/{projectId}/technical-master")
@@ -35,6 +36,58 @@ import org.springframework.web.multipart.MultipartFile;
 public class ProjectTechnicalMasterController {
 
   private final ProjectTechnicalMasterService technicalMasterService;
+
+  /** Editable form (sections + fields, with active flags) for the project's category. */
+  @GetMapping("/template")
+  public ResponseEntity<ApiResponse<?>> template(@PathVariable @NotNull Long projectId) {
+    return ResponseEntity.ok(technicalMasterService.getTemplate(projectId));
+  }
+
+  // ── Catalog edits (add head / field, toggle active, delete) ─────────────────
+
+  @PostMapping("/sections")
+  public ResponseEntity<ApiResponse<?>> createSection(
+      @PathVariable @NotNull Long projectId,
+      @Valid @RequestBody TechnicalMasterDto.SectionRequest request) {
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(technicalMasterService.createSection(projectId, request));
+  }
+
+  @PatchMapping("/sections/{sectionId}")
+  public ResponseEntity<ApiResponse<?>> updateSection(
+      @PathVariable @NotNull Long projectId,
+      @PathVariable @NotNull Long sectionId,
+      @RequestBody TechnicalMasterDto.SectionRequest request) {
+    return ResponseEntity.ok(technicalMasterService.updateSection(projectId, sectionId, request));
+  }
+
+  @DeleteMapping("/sections/{sectionId}")
+  public ResponseEntity<ApiResponse<?>> deleteSection(
+      @PathVariable @NotNull Long projectId, @PathVariable @NotNull Long sectionId) {
+    return ResponseEntity.ok(technicalMasterService.deleteSection(projectId, sectionId));
+  }
+
+  @PostMapping("/fields")
+  public ResponseEntity<ApiResponse<?>> createField(
+      @PathVariable @NotNull Long projectId,
+      @Valid @RequestBody TechnicalMasterDto.FieldRequest request) {
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(technicalMasterService.createField(projectId, request));
+  }
+
+  @PatchMapping("/fields/{fieldId}")
+  public ResponseEntity<ApiResponse<?>> updateField(
+      @PathVariable @NotNull Long projectId,
+      @PathVariable @NotNull Long fieldId,
+      @RequestBody TechnicalMasterDto.FieldRequest request) {
+    return ResponseEntity.ok(technicalMasterService.updateField(projectId, fieldId, request));
+  }
+
+  @DeleteMapping("/fields/{fieldId}")
+  public ResponseEntity<ApiResponse<?>> deleteField(
+      @PathVariable @NotNull Long projectId, @PathVariable @NotNull Long fieldId) {
+    return ResponseEntity.ok(technicalMasterService.deleteField(projectId, fieldId));
+  }
 
   /** Consolidated read; returns an {@code exists:false} shell when none created yet. */
   @GetMapping
