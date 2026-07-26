@@ -7,6 +7,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -145,6 +146,19 @@ public class GlobalExceptionHandler {
                 ErrorCode.RESOURCE_IN_USE,
                 "The request conflicts with existing data or references a record that does not"
                     + " exist.",
+                true));
+  }
+
+  /** Concurrent edit lost the optimistic-lock race (e.g. two Technical Master saves at once). */
+  @ExceptionHandler(OptimisticLockingFailureException.class)
+  public ResponseEntity<ApiResponse<Void>> handleOptimisticLock(
+      OptimisticLockingFailureException ex) {
+    log.warn("Optimistic lock failure: {}", ex.getMessage());
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .body(
+            apiResponseAdaptor.error(
+                ErrorCode.RESOURCE_IN_USE,
+                "This record was updated by someone else. Please reload and try again.",
                 true));
   }
 
