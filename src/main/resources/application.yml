@@ -88,6 +88,15 @@ eureka:
     service-url:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
 
+# gRPC client → identity service, for resolving user ids to display names/emails.
+# Defaults to a direct address; set IDENTITY_GRPC_ADDRESS=discovery:///onemep-identity-service
+# to resolve via Eureka (requires the gRPC port in identity's Eureka metadata).
+grpc:
+  client:
+    identity-service:
+      address: ${IDENTITY_GRPC_ADDRESS:static://localhost:9093}
+      negotiation-type: plaintext
+
 # RS256 public key issued by the identity service. Used to validate the bearer JWT
 # forwarded by the gateway (defence in depth — the service never trusts the network alone).
 jwt:

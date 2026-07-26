@@ -46,7 +46,6 @@ public final class ProjectDto {
       Long handlingOfficeId,
       Long detailingLevelId,
       @Size(max = 2000, message = "Description cannot exceed 2000 characters.") String description,
-      List<Long> leadUserIds,
       List<MemberRequest> members) {}
 
   /** Project ID and category are protected on edit. */
@@ -68,10 +67,13 @@ public final class ProjectDto {
       Long detailingLevelId,
       @Size(max = 500, message = "Reason cannot exceed 500 characters.") String lifecycleReason,
       @Size(max = 2000, message = "Description cannot exceed 2000 characters.") String description,
-      List<Long> leadUserIds,
       List<MemberRequest> members) {}
 
-  public record MemberResponse(Long userId, Long teamRoleId, String teamRoleName) {}
+  /** A user reference resolved to a display name (lead directory). */
+  public record UserRef(Long userId, String userName) {}
+
+  public record MemberResponse(
+      Long userId, String userName, Long teamRoleId, String teamRoleName) {}
 
   public record ListItem(
       Long id,
@@ -84,10 +86,16 @@ public final class ProjectDto {
       String priority,
       Boolean active,
       List<Long> leadUserIds,
+      List<UserRef> leadUsers,
       LocalDateTime updatedDate) {}
 
   public record ActivityItem(
-      String action, String detail, String reason, Long performedBy, LocalDateTime performedAt) {}
+      String action,
+      String detail,
+      String reason,
+      Long performedBy,
+      String performedByName,
+      LocalDateTime performedAt) {}
 
   public record Detail(
       Long id,
@@ -110,10 +118,13 @@ public final class ProjectDto {
       String description,
       Boolean active,
       List<Long> leadUserIds,
+      List<UserRef> leads,
       List<MemberResponse> members,
       Long createdBy,
+      String createdByName,
       LocalDateTime createdDate,
       Long updatedBy,
+      String updatedByName,
       LocalDateTime updatedDate) {}
 
   /**

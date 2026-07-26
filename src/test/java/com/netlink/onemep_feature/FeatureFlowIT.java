@@ -11,11 +11,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.netlink.onemep_feature.user.client.UserDirectoryClient;
+import com.netlink.onemep_feature.user.dto.UserSummary;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -36,6 +46,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @AutoConfigureMockMvc
 @Testcontainers
 @Tag("integration")
+@Import(FeatureFlowIT.StubUserDirectoryConfig.class)
 class FeatureFlowIT {
 
   @Container
@@ -52,6 +63,41 @@ class FeatureFlowIT {
     registry.add("spring.cloud.config.enabled", () -> "false");
     registry.add("spring.cloud.discovery.enabled", () -> "false");
     registry.add("feature.notifications.enabled", () -> "false");
+    // No real identity gRPC server in this test; the stub client below replaces it.
+    registry.add("grpc.client.identity-service.address", () -> "static://localhost:1");
+  }
+
+  /**
+   * Replaces the gRPC-backed client with an in-memory stub so the flow can exercise user-id
+   * enrichment (MEP Team / activity / leads) without a live identity service.
+   */
+  @TestConfiguration
+  static class StubUserDirectoryConfig {
+
+    @Bean
+    @Primary
+    UserDirectoryClient stubUserDirectoryClient() {
+      return new UserDirectoryClient() {
+        @Override
+        public Map<Long, UserSummary> resolve(Collection<Long> ids) {
+          Map<Long, UserSummary> result = new HashMap<>();
+          if (ids != null) {
+            ids.stream()
+                .filter(id -> id != null)
+                .forEach(
+                    id ->
+                        result.put(
+                            id, new UserSummary(id, "User " + id, "user" + id + "@onemep.local")));
+          }
+          return result;
+        }
+
+        @Override
+        public Set<Long> findMissing(Collection<Long> ids) {
+          return Set.of();
+        }
+      };
+    }
   }
 
   @Autowired private MockMvc mockMvc;
@@ -59,16 +105,17 @@ class FeatureFlowIT {
 
   @Test
   void projectEpicFlow_typeIdScheme_confirm_lifecycleReason_andGuards() throws Exception {
+    // V4 seeds categories 1-10; create a distinct one so the sequence continues at CAT-00011.
     long categoryId =
         idOf(
             perform(
                     post("/categories")
                         .content(
-                            "{\"name\":\"Infrastructure\",\"prefix\":\"inf\",\"seriesCode\":6}"))
+                            "{\"name\":\"MEP Discipline\",\"prefix\":\"mep\",\"seriesCode\":99}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.prefix").value("INF"))
-                .andExpect(jsonPath("$.data.seriesCode").value(6))
-                .andExpect(jsonPath("$.data.categoryNumber").value("CAT-00001"))
+                .andExpect(jsonPath("$.data.prefix").value("MEP"))
+                .andExpect(jsonPath("$.data.seriesCode").value(99))
+                .andExpect(jsonPath("$.data.categoryNumber").value("CAT-00011"))
                 .andReturn());
 
     long tierId =
@@ -81,7 +128,7 @@ class FeatureFlowIT {
         idOf(
             perform(
                     post("/team-roles")
-                        .content("{\"name\":\"Lead Engineer\",\"tierId\":" + tierId + "}"))
+                        .content("{\"name\":\"Project Lead\",\"tierId\":" + tierId + "}"))
                 .andExpect(status().isCreated())
                 .andReturn());
 
@@ -110,7 +157,7 @@ class FeatureFlowIT {
                                 + officeId
                                 + ",\"detailingLevelId\":"
                                 + levelId
-                                + ",\"leadUserIds\":[1],\"members\":[{\"userId\":2,\"teamRoleId\":"
+                                + ",\"members\":[{\"userId\":2,\"teamRoleId\":"
                                 + teamRoleId
                                 + "}]}"))
                 .andExpect(status().isCreated())
@@ -120,7 +167,8 @@ class FeatureFlowIT {
                 .andExpect(jsonPath("$.data.type").value("NON_CONFIRMED"))
                 .andExpect(jsonPath("$.data.lifecycleStatus").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.handlingOfficeName").value("Dubai Office"))
-                .andExpect(jsonPath("$.data.leadUserIds[0]").value(1))
+                // Member 2 carries the "Project Lead" role → it is the project lead.
+                .andExpect(jsonPath("$.data.leadUserIds[0]").value(2))
                 .andReturn());
 
     // Name character rule: '#' is not allowed.
@@ -133,14 +181,14 @@ class FeatureFlowIT {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
 
-    // Confirm the project → Project ID reassigned from series 6, type locked.
+    // Confirm the project → Project ID reassigned from series 99, type locked.
     perform(patch("/projects/" + projectId + "/type").param("type", "CONFIRMED"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.type").value("CONFIRMED"))
         .andExpect(jsonPath("$.data.typeLocked").value(true))
         .andExpect(
             jsonPath("$.data.projectNumber")
-                .value(org.hamcrest.Matchers.matchesPattern("6\\d{4}")));
+                .value(org.hamcrest.Matchers.matchesPattern("99\\d{4}")));
 
     // Confirmed project cannot revert to Non-confirmed.
     perform(patch("/projects/" + projectId + "/type").param("type", "NON_CONFIRMED"))
@@ -203,14 +251,21 @@ class FeatureFlowIT {
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.data.role").value("PROJECT_HEAD"));
 
-    // Overview aggregates every section + the activity log.
+    // Overview aggregates every section + the activity log, with user ids enriched to names.
     perform(get("/projects/" + projectId + "/overview"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.project.lifecycleStatus").value("ON_HOLD"))
         .andExpect(jsonPath("$.data.specSheets[0].fileName").value("design-basis.pdf"))
         .andExpect(jsonPath("$.data.deliverySchedule[0].milestone").value("Design Freeze"))
         .andExpect(jsonPath("$.data.stakeholders[0].name").value("Jane Doe"))
-        .andExpect(jsonPath("$.data.activity").isNotEmpty());
+        .andExpect(jsonPath("$.data.activity").isNotEmpty())
+        // MEP Team member id 2 → resolved display name.
+        .andExpect(jsonPath("$.data.project.members[0].userId").value(2))
+        .andExpect(jsonPath("$.data.project.members[0].userName").value("User 2"))
+        // Member 2 has the "Project Lead" role → it surfaces as the project lead.
+        .andExpect(jsonPath("$.data.project.leads[0].userName").value("User 2"))
+        // Activity actor (subject "1") → resolved display name.
+        .andExpect(jsonPath("$.data.activity[0].performedByName").value("User 1"));
 
     // Structured Type filter returns the confirmed project.
     perform(post("/projects/list").content("{\"filters\":{\"type\":\"CONFIRMED\"}}"))

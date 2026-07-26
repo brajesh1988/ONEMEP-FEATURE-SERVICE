@@ -77,6 +77,7 @@ CATEGORIES = [
 TIERS = ["Leadership", "Engineering", "Support"]
 
 TEAM_ROLES = [
+    ("Project Lead", "Leadership"),
     ("Project Manager", "Leadership"),
     ("Discipline Lead", "Leadership"),
     ("Senior Design Engineer", "Engineering"),
@@ -201,7 +202,8 @@ def seed_units():
 
 def seed_projects(cat_ids, role_ids):
     print("\n== Projects ==")
-    role_id = next(iter(role_ids.values()), None)
+    # A project lead is simply a member carrying the "Project Lead" team role.
+    lead_role_id = role_ids.get("Project Lead") or next(iter(role_ids.values()), None)
     created = []
     for name, cat, priority in PROJECTS:
         cid = cat_ids.get(cat)
@@ -213,10 +215,9 @@ def seed_projects(cat_ids, role_ids):
             "categoryId": cid,
             "priority": priority,
             "description": f"{cat} discipline scope for {name}.",
-            "leadUserIds": [1],
         }
-        if role_id:
-            body["members"] = [{"userId": 1, "teamRoleId": role_id}]
+        if lead_role_id:
+            body["members"] = [{"userId": 1, "teamRoleId": lead_role_id}]
         st, r = call("POST", "/projects", body)
         d = data_of(r)
         if st in (200, 201) and d:
