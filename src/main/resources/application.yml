@@ -108,6 +108,20 @@ feature:
     enabled: ${NOTIFICATIONS_ENABLED:true}
     from: ${NOTIFICATIONS_FROM:no-reply@onemep.local}
 
+  # DID tab default rows (Technical Master → DID). Synthesized on GET only when nothing has
+  # been saved yet for the project — never auto-persisted.
+  did-defaults:
+    delivery-stages:
+      - "MEP Space Plan & DBR / Sanction Drawings"
+      - "MEP Schematic Drawings"
+      - "MEP Design Development Stage"
+      - "MEP Tender Drawing & BOQ"
+      - "MEP GFC Stage"
+    client-contact-designations:
+      - "Project Owner"
+      - "Project Head"
+      - "Project Coordinator"
+
 management:
   endpoints:
     web:

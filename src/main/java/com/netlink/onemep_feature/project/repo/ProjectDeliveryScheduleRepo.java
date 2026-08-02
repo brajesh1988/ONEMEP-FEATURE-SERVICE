@@ -12,4 +12,7 @@ public interface ProjectDeliveryScheduleRepo extends JpaRepository<ProjectDelive
   List<ProjectDeliverySchedule> findByProject_IdOrderByPlannedDateAscIdAsc(Long projectId);
 
   Optional<ProjectDeliverySchedule> findByIdAndProject_Id(Long id, Long projectId);
+
+  List<ProjectDeliverySchedule> findByProject_IdAndDidStageTrueOrderByStageOrderAscIdAsc(
+      Long projectId);
 }

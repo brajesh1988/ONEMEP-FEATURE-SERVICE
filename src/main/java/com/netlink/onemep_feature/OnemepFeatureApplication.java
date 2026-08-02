@@ -1,13 +1,14 @@
 package com.netlink.onemep_feature;
 
 import com.netlink.onemep_feature.notification.NotificationProperties;
+import com.netlink.onemep_feature.project.config.DidDefaultsProperties;
 import java.util.TimeZone;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties(NotificationProperties.class)
+@EnableConfigurationProperties({NotificationProperties.class, DidDefaultsProperties.class})
 public class OnemepFeatureApplication {
 
   public static void main(String[] args) {

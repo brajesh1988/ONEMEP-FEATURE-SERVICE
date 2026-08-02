@@ -203,6 +203,103 @@ class TechnicalMasterFlowIT {
         .andExpect(status().isBadRequest());
   }
 
+  @Test
+  void didSpecification_defaultsSaveAndReload_roundTrips() throws Exception {
+    long projectId =
+        idOf(
+            perform(
+                    post("/projects")
+                        .content(
+                            "{\"name\":\"DID"
+                                + " Flow\",\"categoryId\":1,\"type\":\"NON_CONFIRMED\","
+                                + "\"priority\":\"MEDIUM\"}"))
+                .andExpect(status().isCreated())
+                .andReturn());
+
+    // Nothing saved yet: configured defaults are synthesized, not persisted.
+    perform(get("/projects/" + projectId + "/technical-master/did"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.exists").value(false))
+        .andExpect(jsonPath("$.data.designIntentBrief").doesNotExist())
+        .andExpect(jsonPath("$.data.deliverySchedule.length()").value(5))
+        .andExpect(jsonPath("$.data.deliverySchedule[0].id").doesNotExist())
+        .andExpect(jsonPath("$.data.clientInformation.contacts.length()").value(3))
+        .andExpect(jsonPath("$.data.architectTeam.contacts.length()").value(0));
+
+    perform(get("/projects/" + projectId + "/technical-master/did/green-rating-options"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[*].code", Matchers.hasItem("IGBC")));
+
+    String savePayload =
+        "{\"designIntentBrief\":{\"lockedDesignIntent\":\"Locked intent"
+            + " text\",\"initialClientRfiResponse\":\"RFI"
+            + " response\",\"greenRatingTarget\":\"IGBC\",\"sustainabilityMandates\":\"Solar,"
+            + " RWH\"},\"deliverySchedule\":[{\"stageName\":\"MEP Space Plan & DBR / Sanction"
+            + " Drawings\",\"startDate\":\"2026-01-01\",\"endDate\":\"2026-02-01\"},"
+            + "{\"stageName\":null,\"startDate\":null,\"endDate\":null}],\"clientInformation\":{\"clientName\":\"Acme\",\"clientCompany\":\"Acme"
+            + " Co\",\"contacts\":[{\"designation\":\"Project"
+            + " Owner\",\"isDefault\":true},{\"designation\":\"Project"
+            + " Head\",\"isDefault\":true},{\"designation\":\"Project"
+            + " Coordinator\",\"isDefault\":true},{\"designation\":\"Site Lead\",\"name\":\"Jane"
+            + " Doe\",\"mailId\":\"jane@acme.com\",\"contactNo\":\"+91"
+            + " 9876543210\",\"isDefault\":false}]},"
+            + "\"architectTeam\":{\"architectureFirm\":\"ArchCo\",\"contacts\":[{\"designation\":\"Lead"
+            + " Architect\",\"name\":\"John"
+            + " Roe\",\"mailId\":\"john@archco.com\",\"contactNo\":\"+91"
+            + " 9876500000\",\"isDefault\":false}]},"
+            + "\"structureConsultantTeam\":{\"structuralConsultancy\":\"StructCo\",\"contacts\":[]}"
+            + "}";
+
+    JsonNode saved =
+        dataOf(
+            perform(put("/projects/" + projectId + "/technical-master/did").content(savePayload))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.exists").value(true))
+                .andExpect(
+                    jsonPath("$.data.designIntentBrief.lockedDesignIntent")
+                        .value("Locked intent text"))
+                .andExpect(jsonPath("$.data.deliverySchedule.length()").value(1))
+                .andExpect(jsonPath("$.data.clientInformation.contacts.length()").value(4))
+                .andReturn());
+    long projectOwnerContactId = -1;
+    for (JsonNode c : saved.path("clientInformation").path("contacts")) {
+      if ("Project Owner".equals(c.path("designation").asText())) {
+        projectOwnerContactId = c.path("id").asLong();
+      }
+    }
+    org.assertj.core.api.Assertions.assertThat(projectOwnerContactId).isPositive();
+
+    // Reload: persisted values come back, defaults don't reappear.
+    perform(get("/projects/" + projectId + "/technical-master/did"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.exists").value(true))
+        .andExpect(jsonPath("$.data.deliverySchedule.length()").value(1))
+        .andExpect(
+            jsonPath("$.data.deliverySchedule[0].stageName")
+                .value("MEP Space Plan & DBR / Sanction Drawings"))
+        .andExpect(jsonPath("$.data.architectTeam.architectureFirm").value("ArchCo"));
+
+    // Same underlying table as ONEMEP-15's delivery schedule — the saved stage shows up there too.
+    perform(get("/projects/" + projectId + "/technical-master"))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.data.deliverySchedule[*].milestone")
+                .value(Matchers.hasItem("MEP Space Plan & DBR / Sanction Drawings")));
+
+    // Dropping a default contact row (omitting its id) is rejected, not silently deleted.
+    String removeDefaultPayload =
+        "{"
+            + "\"designIntentBrief\":{\"lockedDesignIntent\":\"Locked intent text\"},"
+            + "\"deliverySchedule\":[],"
+            + "\"clientInformation\":{\"clientName\":\"Acme\",\"clientCompany\":\"Acme Co\","
+            + "\"contacts\":[]},"
+            + "\"architectTeam\":{\"contacts\":[]},"
+            + "\"structureConsultantTeam\":{\"contacts\":[]}"
+            + "}";
+    perform(put("/projects/" + projectId + "/technical-master/did").content(removeDefaultPayload))
+        .andExpect(status().isBadRequest());
+  }
+
   private org.springframework.test.web.servlet.ResultActions perform(
       org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder builder)
       throws Exception {

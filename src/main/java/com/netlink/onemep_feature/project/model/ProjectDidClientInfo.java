@@ -10,26 +10,20 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-/** DID tab, "Design Intent & Brief" subsection — one row per Technical Master. */
+/** DID tab, "Client Information" subsection — one row per Technical Master. */
 @Entity
-@Table(name = "project_did_specification")
+@Table(name = "project_did_client_info")
 @Getter
 @Setter
-public class ProjectDidSpecification extends BaseEntity {
+public class ProjectDidClientInfo extends BaseEntity {
 
   @OneToOne(fetch = FetchType.LAZY, optional = false)
   @JoinColumn(name = "technical_master_id", nullable = false, updatable = false)
   private ProjectTechnicalMaster technicalMaster;
 
-  @Column(name = "locked_design_intent", nullable = false)
-  private String lockedDesignIntent;
+  @Column(name = "client_name")
+  private String clientName;
 
-  @Column(name = "initial_client_rfi_response")
-  private String initialClientRfiResponse;
-
-  @Column(name = "green_rating_target")
-  private String greenRatingTarget;
-
-  @Column(name = "sustainability_mandates")
-  private String sustainabilityMandates;
+  @Column(name = "client_company")
+  private String clientCompany;
 }

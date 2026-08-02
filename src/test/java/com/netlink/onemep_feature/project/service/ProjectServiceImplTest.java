@@ -159,7 +159,17 @@ class ProjectServiceImplTest {
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
-            "Marina", 10L, "CONFIRMED", "MEDIUM", "ACTIVE", null, null, null, null, null, null,
+            "Marina",
+            10L,
+            "CONFIRMED",
+            "MEDIUM",
+            "ACTIVE",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
@@ -191,7 +201,17 @@ class ProjectServiceImplTest {
 
     ProjectDto.CreateRequest request =
         new ProjectDto.CreateRequest(
-            "Marina", 10L, "CONFIRMED", "MEDIUM", "ACTIVE", null, null, null, null, null, null,
+            "Marina",
+            10L,
+            "CONFIRMED",
+            "MEDIUM",
+            "ACTIVE",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
             null);
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
@@ -244,7 +264,17 @@ class ProjectServiceImplTest {
 
     ProjectDto.UpdateRequest request =
         new ProjectDto.UpdateRequest(
-            "Apollo II", "CRITICAL", "COMPLETED", "DD", null, null, null, null, null, null, "upd",
+            "Apollo II",
+            "CRITICAL",
+            "COMPLETED",
+            "DD",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "upd",
             null);
 
     ProjectDto.Detail data = (ProjectDto.Detail) service.update(1L, request).getData();

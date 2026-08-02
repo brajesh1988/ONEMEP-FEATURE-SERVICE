@@ -39,4 +39,19 @@ public class ProjectDeliverySchedule extends BaseEntity {
 
   @Column(name = "remarks")
   private String remarks;
+
+  /** DID tab "Delivery Schedule" stage start date; unused by general ONEMEP-15 milestones. */
+  @Column(name = "start_date")
+  private LocalDate startDate;
+
+  /** DID tab "Delivery Schedule" stage end date; unused by general ONEMEP-15 milestones. */
+  @Column(name = "end_date")
+  private LocalDate endDate;
+
+  /** True for rows owned by the DID Delivery Schedule; scopes DID's diff/delete to these rows. */
+  @Column(name = "is_did_stage", nullable = false)
+  private Boolean didStage = Boolean.FALSE;
+
+  @Column(name = "stage_order")
+  private Integer stageOrder;
 }
