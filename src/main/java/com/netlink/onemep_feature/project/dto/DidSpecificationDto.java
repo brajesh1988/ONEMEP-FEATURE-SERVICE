@@ -16,13 +16,16 @@ import java.util.List;
 public final class DidSpecificationDto {
   private DidSpecificationDto() {}
 
-  private static final String PHONE_PATTERN = "^[+]?[0-9()\\-\\s]{7,20}$";
+  // Leading "^$|" lets a blank contact number through — unlike @Email, @Pattern does not
+  // treat an empty string as automatically valid, and the frontend sends "" (not null) for
+  // fields the user left blank.
+  private static final String PHONE_PATTERN = "^$|^[+]?[0-9()\\-\\s]{7,20}$";
 
   // ── Design Intent & Brief ────────────────────────────────────────────────────
 
   public record DesignIntentBrief(
-      @NotBlank(message = "Locked design intent is required.")
-          @Size(max = 2000, message = "Locked design intent cannot exceed 2000 characters.")
+      @NotBlank(message = "Design brief is required.")
+          @Size(max = 1500, message = "Design brief cannot exceed 1500 characters.")
           String lockedDesignIntent,
       @Size(max = 2000, message = "Initial client RFI response cannot exceed 2000 characters.")
           String initialClientRfiResponse,

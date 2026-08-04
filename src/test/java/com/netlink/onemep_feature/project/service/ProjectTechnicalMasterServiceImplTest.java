@@ -3,6 +3,7 @@ package com.netlink.onemep_feature.project.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.netlink.onemep_feature.category.model.CategoryMaster;
 import com.netlink.onemep_feature.common.adaptor.ApiResponseAdaptor;
 import com.netlink.onemep_feature.exception.ApplicationException;
+import com.netlink.onemep_feature.project.dto.DidSpecificationDto;
 import com.netlink.onemep_feature.project.dto.TechnicalMasterDto;
 import com.netlink.onemep_feature.project.model.ProjectMaster;
 import com.netlink.onemep_feature.project.model.ProjectTechnicalFieldValue;
@@ -51,6 +53,7 @@ class ProjectTechnicalMasterServiceImplTest {
   @Mock private ProjectRepo projectRepo;
   @Mock private ProjectDeliveryScheduleRepo deliveryScheduleRepo;
   @Mock private ProjectActivityLogRepo activityRepo;
+  @Mock private ProjectDidSpecificationService didSpecificationService;
 
   private ProjectTechnicalMasterServiceImpl service;
 
@@ -66,11 +69,22 @@ class ProjectTechnicalMasterServiceImplTest {
             projectRepo,
             deliveryScheduleRepo,
             activityRepo,
+            didSpecificationService,
             new ApiResponseAdaptor());
     when(projectRepo.findById(1L)).thenReturn(Optional.of(project(1)));
     when(deliveryScheduleRepo.findByProject_IdOrderByPlannedDateAscIdAsc(1L)).thenReturn(List.of());
     when(fieldValueRepo.findByTechnicalMaster_Id(any())).thenReturn(List.of());
     when(attachmentRepo.findMetadataByProjectId(1L)).thenReturn(List.of());
+  }
+
+  /** A minimal, always-valid DID payload — most Technical Master tests don't care about DID. */
+  private static DidSpecificationDto.UpsertRequest validDid() {
+    return new DidSpecificationDto.UpsertRequest(
+        new DidSpecificationDto.DesignIntentBrief("Design brief", null, null, null),
+        List.of(),
+        new DidSpecificationDto.ClientInformation(null, null, List.of()),
+        new DidSpecificationDto.ArchitectTeam(null, List.of()),
+        new DidSpecificationDto.StructureConsultantTeam(null, List.of()));
   }
 
   @Test
@@ -98,7 +112,7 @@ class ProjectTechnicalMasterServiceImplTest {
                 field(10L, s, 1, "Remarks", "site__rem", false)));
 
     TechnicalMasterDto.UpsertRequest req =
-        new TechnicalMasterDto.UpsertRequest(null, Map.of("site__rem", "x"));
+        new TechnicalMasterDto.UpsertRequest(null, Map.of("site__rem", "x"), validDid());
 
     assertThatThrownBy(() -> service.upsert(1L, req)).isInstanceOf(ApplicationException.class);
     verify(fieldValueRepo, never()).save(any());
@@ -112,10 +126,12 @@ class ProjectTechnicalMasterServiceImplTest {
     when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
     when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
 
-    service.upsert(1L, new TechnicalMasterDto.UpsertRequest("n", Map.of("site__plot", "1000")));
+    service.upsert(
+        1L, new TechnicalMasterDto.UpsertRequest("n", Map.of("site__plot", "1000"), validDid()));
 
     verify(fieldValueRepo).deleteByTechnicalMaster_Id(10L);
     verify(fieldValueRepo, times(1)).save(any(ProjectTechnicalFieldValue.class));
+    verify(didSpecificationService).applyUpsert(any(), any(), eq(validDid()), any());
   }
 
   @Test
@@ -127,7 +143,7 @@ class ProjectTechnicalMasterServiceImplTest {
     when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
     when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
 
-    service.upsert(1L, new TechnicalMasterDto.UpsertRequest(null, Map.of()));
+    service.upsert(1L, new TechnicalMasterDto.UpsertRequest(null, Map.of(), validDid()));
 
     verify(fieldValueRepo).deleteByTechnicalMaster_Id(10L);
   }
@@ -137,8 +153,26 @@ class ProjectTechnicalMasterServiceImplTest {
     when(fieldRepo.findBySeriesCode(1)).thenReturn(List.of());
 
     assertThatThrownBy(
-            () -> service.upsert(1L, new TechnicalMasterDto.UpsertRequest(null, Map.of("x", "y"))))
+            () ->
+                service.upsert(
+                    1L, new TechnicalMasterDto.UpsertRequest(null, Map.of("x", "y"), validDid())))
         .isInstanceOf(ApplicationException.class);
+  }
+
+  @Test
+  void upsert_didValidationFails_rollsBackAndDoesNotSwallowException() {
+    when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
+    when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
+    when(fieldRepo.findBySeriesCode(1)).thenReturn(List.of());
+    when(didSpecificationService.applyUpsert(any(), any(), any(), any()))
+        .thenThrow(new ApplicationException("Design brief is required."));
+
+    assertThatThrownBy(
+            () ->
+                service.upsert(
+                    1L, new TechnicalMasterDto.UpsertRequest(null, Map.of(), validDid())))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessage("Design brief is required.");
   }
 
   @Test

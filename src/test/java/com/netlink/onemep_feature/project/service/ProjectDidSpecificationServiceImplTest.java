@@ -28,7 +28,6 @@ import com.netlink.onemep_feature.project.model.ProjectDidSpecification;
 import com.netlink.onemep_feature.project.model.ProjectMaster;
 import com.netlink.onemep_feature.project.model.ProjectTechnicalMaster;
 import com.netlink.onemep_feature.project.repo.DidGreenRatingOptionRepo;
-import com.netlink.onemep_feature.project.repo.ProjectActivityLogRepo;
 import com.netlink.onemep_feature.project.repo.ProjectDeliveryScheduleRepo;
 import com.netlink.onemep_feature.project.repo.ProjectDidArchitectTeamRepo;
 import com.netlink.onemep_feature.project.repo.ProjectDidClientInfoRepo;
@@ -48,7 +47,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-/** Unit tests for the DID tab (Technical Master → DID). */
+/**
+ * Unit tests for the DID tab (Technical Master → DID). Saving (ONEMEP-31) is only reachable via
+ * {@link ProjectDidSpecificationServiceImpl#applyUpsert}, called from within the combined Technical
+ * Master save — there is no standalone DID save to test here.
+ */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ProjectDidSpecificationServiceImplTest {
@@ -62,7 +65,6 @@ class ProjectDidSpecificationServiceImplTest {
   @Mock private ProjectDidArchitectTeamRepo architectTeamRepo;
   @Mock private ProjectDidStructureConsultantTeamRepo structureTeamRepo;
   @Mock private ProjectDidContactRepo contactRepo;
-  @Mock private ProjectActivityLogRepo activityRepo;
 
   private ProjectDidSpecificationServiceImpl service;
 
@@ -83,16 +85,12 @@ class ProjectDidSpecificationServiceImplTest {
             architectTeamRepo,
             structureTeamRepo,
             contactRepo,
-            activityRepo,
             didDefaults,
             new ApiResponseAdaptor());
-    when(projectRepo.findById(1L)).thenReturn(Optional.of(project()));
   }
 
   @Test
-  void upsert_withValidPayload_savesAllSubsections() {
-    when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
-    when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
+  void applyUpsert_withValidPayload_savesAllSubsections() {
     when(greenRatingOptionRepo.findByCodeAndActiveTrue("IGBC"))
         .thenReturn(Optional.of(greenRatingOption("IGBC")));
     when(deliveryScheduleRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -115,7 +113,7 @@ class ProjectDidSpecificationServiceImplTest {
             .architectTeam("ArchCo", List.of())
             .structureConsultantTeam("StructCo", List.of());
 
-    service.upsert(1L, request.build());
+    service.applyUpsert(project(), master(), request.build(), 1L);
 
     verify(didSpecRepo).save(any(ProjectDidSpecification.class));
     verify(deliveryScheduleRepo, times(1)).save(any());
@@ -123,42 +121,40 @@ class ProjectDidSpecificationServiceImplTest {
     verify(contactRepo, times(2)).save(any(ProjectDidContact.class));
     verify(architectTeamRepo).save(any());
     verify(structureTeamRepo).save(any());
-    verify(activityRepo).save(any());
   }
 
   @Test
-  void upsert_withBlankLockedDesignIntent_throws() {
-    when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
-    when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
-
-    UpsertRequestBuilder request =
-        new UpsertRequestBuilder()
-            .designIntentBrief(new DesignIntentBrief("   ", null, null, null));
-
-    assertThatThrownBy(() -> service.upsert(1L, request.build()))
+  void applyUpsert_withNullDid_throws() {
+    assertThatThrownBy(() -> service.applyUpsert(project(), master(), null, 1L))
         .isInstanceOf(ApplicationException.class);
     verify(didSpecRepo, never()).save(any());
   }
 
   @Test
-  void upsert_withInvalidGreenRatingTarget_throws() {
-    when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
-    when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
+  void applyUpsert_withBlankLockedDesignIntent_throws() {
+    UpsertRequestBuilder request =
+        new UpsertRequestBuilder()
+            .designIntentBrief(new DesignIntentBrief("   ", null, null, null));
 
+    assertThatThrownBy(() -> service.applyUpsert(project(), master(), request.build(), 1L))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessage("Design brief is required.");
+    verify(didSpecRepo, never()).save(any());
+  }
+
+  @Test
+  void applyUpsert_withInvalidGreenRatingTarget_throws() {
     UpsertRequestBuilder request =
         new UpsertRequestBuilder()
             .designIntentBrief(
                 new DesignIntentBrief("Locked intent", null, "NOT_A_REAL_CODE", null));
 
-    assertThatThrownBy(() -> service.upsert(1L, request.build()))
+    assertThatThrownBy(() -> service.applyUpsert(project(), master(), request.build(), 1L))
         .isInstanceOf(ApplicationException.class);
   }
 
   @Test
-  void upsert_withEndDateBeforeStartDate_throws() {
-    when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
-    when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
-
+  void applyUpsert_withEndDateBeforeStartDate_throws() {
     UpsertRequestBuilder request =
         new UpsertRequestBuilder()
             .designIntentBrief(new DesignIntentBrief("Locked intent", null, null, null))
@@ -166,14 +162,24 @@ class ProjectDidSpecificationServiceImplTest {
                 new DeliveryStage(
                     null, "Stage 1", LocalDate.of(2026, 2, 1), LocalDate.of(2026, 1, 1)));
 
-    assertThatThrownBy(() -> service.upsert(1L, request.build()))
+    assertThatThrownBy(() -> service.applyUpsert(project(), master(), request.build(), 1L))
         .isInstanceOf(ApplicationException.class);
   }
 
   @Test
-  void upsert_blankTrailingDeliveryRow_isSilentlyDropped() {
-    when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
-    when(technicalMasterRepo.saveAndFlush(any())).thenAnswer(inv -> withId(inv.getArgument(0)));
+  void applyUpsert_withBlankDeliveryStageName_throwsExactMessage() {
+    UpsertRequestBuilder request =
+        new UpsertRequestBuilder()
+            .designIntentBrief(new DesignIntentBrief("Locked intent", null, null, null))
+            .deliveryStage(new DeliveryStage(null, null, LocalDate.of(2026, 1, 1), null));
+
+    assertThatThrownBy(() -> service.applyUpsert(project(), master(), request.build(), 1L))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessage("Every delivery stage needs a name.");
+  }
+
+  @Test
+  void applyUpsert_blankTrailingDeliveryRow_isSilentlyDropped() {
     when(deliveryScheduleRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
     UpsertRequestBuilder request =
@@ -184,16 +190,14 @@ class ProjectDidSpecificationServiceImplTest {
                     null, "Stage 1", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1)))
             .deliveryStage(new DeliveryStage(null, null, null, null));
 
-    service.upsert(1L, request.build());
+    service.applyUpsert(project(), master(), request.build(), 1L);
 
     verify(deliveryScheduleRepo, times(1)).save(any());
   }
 
   @Test
-  void upsert_removingDefaultClientContact_throws() {
+  void applyUpsert_removingDefaultClientContact_throws() {
     ProjectTechnicalMaster master = master();
-    when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.of(master));
-    when(technicalMasterRepo.saveAndFlush(any())).thenReturn(master);
     ProjectDidContact existingDefault = new ProjectDidContact();
     existingDefault.setId(5L);
     existingDefault.setPartyType(DidPartyType.CLIENT);
@@ -208,13 +212,14 @@ class ProjectDidSpecificationServiceImplTest {
             .designIntentBrief(new DesignIntentBrief("Locked intent", null, null, null))
             .clientInformation("Acme", null, List.of());
 
-    assertThatThrownBy(() -> service.upsert(1L, request.build()))
+    assertThatThrownBy(() -> service.applyUpsert(project(), master, request.build(), 1L))
         .isInstanceOf(ApplicationException.class);
     verify(contactRepo, never()).delete(existingDefault);
   }
 
   @Test
   void get_withNoExistingData_returnsDefaultsAndExistsFalse() {
+    when(projectRepo.findById(1L)).thenReturn(Optional.of(project()));
     when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.empty());
 
     Response response = (Response) service.get(1L).getData();
@@ -234,6 +239,7 @@ class ProjectDidSpecificationServiceImplTest {
   @Test
   void get_withExistingData_returnsPersistedRowsNotDefaults() {
     ProjectTechnicalMaster master = master();
+    when(projectRepo.findById(1L)).thenReturn(Optional.of(project()));
     when(technicalMasterRepo.findByProject_Id(1L)).thenReturn(Optional.of(master));
 
     ProjectDidSpecification spec = new ProjectDidSpecification();
@@ -261,11 +267,6 @@ class ProjectDidSpecificationServiceImplTest {
     assertThat(response.deliverySchedule())
         .extracting(DeliveryStage::stageName)
         .containsExactly("Stage A", "Stage B"); // no persisted DID stages -> defaults still shown
-  }
-
-  private static ProjectTechnicalMaster withId(ProjectTechnicalMaster m) {
-    m.setId(10L);
-    return m;
   }
 
   private static ProjectTechnicalMaster master() {

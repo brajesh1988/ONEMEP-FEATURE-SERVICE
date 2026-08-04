@@ -1,5 +1,6 @@
 package com.netlink.onemep_feature.project.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -54,10 +55,16 @@ public final class TechnicalMasterDto {
 
   // ── Value requests ──────────────────────────────────────────────────────────
 
-  /** Create-or-replace: general remarks + the filled values (blank values are cleared). */
+  /**
+   * Create-or-replace: general remarks + the filled values (blank values are cleared), plus the DID
+   * tab's data (ONEMEP-31 — Technical Master and DID are saved together, in one transaction; there
+   * is no standalone DID save).
+   */
   public record UpsertRequest(
       @Size(max = 2000, message = "Remarks cannot exceed 2000 characters.") String remarks,
-      Map<String, String> values) {}
+      Map<String, String> values,
+      @Valid @NotNull(message = "DID information is required.")
+          DidSpecificationDto.UpsertRequest did) {}
 
   // ── Responses ───────────────────────────────────────────────────────────────
 
@@ -70,6 +77,7 @@ public final class TechnicalMasterDto {
       List<AttachmentMetadata> attachments,
       List<DeliveryScheduleDto.Response> deliverySchedule,
       ClientInfo clientInfo,
+      DidSpecificationDto.Response did,
       Long createdBy,
       LocalDateTime createdDate,
       Long updatedBy,

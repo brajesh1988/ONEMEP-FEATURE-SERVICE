@@ -2,7 +2,7 @@
   "info": {
     "name": "ONEMEP DID Specification (Technical Master → DID)",
     "_postman_id": "9d3f2b7a-4c1e-4f8a-9b2d-didspecification01",
-    "description": "DID tab of the Technical Master (Design Intent & Brief, Delivery Schedule, Client Information, Architect Team, Structure Consultant Team) — ONEMEP-29.\n\nHOW TO USE\n1. Select an environment (baseUrl / email / password), or edit the collection variable defaults.\n2. Run **Auth > Login** first — its test script stores `accessToken` as a collection variable.\n3. All other requests inherit Bearer `{{accessToken}}` automatically.\n4. Run **Get project by id** or create a project via the main Feature Service collection to populate `projectId`, or just edit the `projectId` variable directly.\n\nAll paths go through the API Gateway with the `/feature` and `/identity` prefixes — the gateway rewrites these to each service's real context path (`/feature-service`, `/identity-service`).",
+    "description": "DID tab of the Technical Master (Design Intent & Brief, Delivery Schedule, Client Information, Architect Team, Structure Consultant Team) — ONEMEP-29/31.\n\nHOW TO USE\n1. Select an environment (baseUrl / email / password), or edit the collection variable defaults.\n2. Run **Auth > Login** first — its test script stores `accessToken` as a collection variable.\n3. All other requests inherit Bearer `{{accessToken}}` automatically.\n4. Run **Get project by id** or create a project via the main Feature Service collection to populate `projectId`, or just edit the `projectId` variable directly.\n\nAll paths go through the API Gateway with the `/feature` and `/identity` prefixes — the gateway rewrites these to each service's real context path (`/feature-service`, `/identity-service`).\n\nONEMEP-31: Technical Master and DID are one form, saved together through a single action — there is no standalone DID save endpoint. This collection only covers DID's read-only requests (GET); for the combined save, see the \"Technical Master\" folder in ONEMEP-Feature-Service.postman_collection.json — its \"Save Technical Master + DID (combined)\" request nests the DID payload under the same `did` field shown in this collection's earlier examples.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -53,7 +53,105 @@
       ]
     },
     {
-      "name": "DID Specification",
+      "name": "Technical Master + DID (combined save, ONEMEP-29/31)",
+      "item": [
+        {
+          "name": "Get Technical Master (values + read-only delivery schedule / client info)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/technical-master",
+              "host": ["{{baseUrl}}"],
+              "path": ["feature", "projects", "{{projectId}}", "technical-master"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Save Technical Master + DID (one action, atomic)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('saved', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('DID data returned in the same response', () => pm.expect(pm.response.json().data.did.exists).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remarks\": \"Reviewed with client on site visit.\",\n  \"values\": {},\n  \"did\": {\n    \"designIntentBrief\": {\n      \"lockedDesignIntent\": \"Full HVAC, electrical and plumbing systems per LEED Gold target; central chiller plant sized for future 20% expansion.\",\n      \"initialClientRfiResponse\": \"Client confirmed VRF over central plant is not preferred; proceed with central chiller plant.\",\n      \"greenRatingTarget\": \"IGBC\",\n      \"sustainabilityMandates\": \"Solar-ready roof, rainwater harvesting, EV charging provisions\"\n    },\n    \"deliverySchedule\": [\n      { \"id\": null, \"stageName\": \"MEP Space Plan & DBR / Sanction Drawings\", \"startDate\": \"2026-08-01\", \"endDate\": \"2026-08-15\" },\n      { \"id\": null, \"stageName\": \"MEP Schematic Drawings\", \"startDate\": \"2026-08-16\", \"endDate\": \"2026-08-30\" }\n    ],\n    \"clientInformation\": {\n      \"clientName\": \"Marina Developments LLC\",\n      \"clientCompany\": \"Marina Developments LLC\",\n      \"contacts\": [\n        { \"id\": null, \"designation\": \"Project Owner\", \"name\": \"Jane Doe\", \"mailId\": \"jane.doe@marina.com\", \"contactNo\": \"+65 9000 0001\", \"isDefault\": true }\n      ]\n    },\n    \"architectTeam\": { \"architectureFirm\": \"DesignCo Architects\", \"contacts\": [] },\n    \"structureConsultantTeam\": { \"structuralConsultancy\": \"StructCo Consultants\", \"contacts\": [] }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/technical-master",
+              "host": ["{{baseUrl}}"],
+              "path": ["feature", "projects", "{{projectId}}", "technical-master"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Save - DID validation failure rolls back Technical Master too (expect 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected as 400', () => pm.expect(pm.response.code).to.eql(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remarks\": \"This should not persist.\",\n  \"values\": {},\n  \"did\": {\n    \"designIntentBrief\": { \"lockedDesignIntent\": \"\" },\n    \"deliverySchedule\": [],\n    \"clientInformation\": { \"contacts\": [] },\n    \"architectTeam\": { \"contacts\": [] },\n    \"structureConsultantTeam\": { \"contacts\": [] }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/technical-master",
+              "host": ["{{baseUrl}}"],
+              "path": ["feature", "projects", "{{projectId}}", "technical-master"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Download blank .xlsx template",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/technical-master/template-download",
+              "host": ["{{baseUrl}}"],
+              "path": ["feature", "projects", "{{projectId}}", "technical-master", "template-download"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export filled .xlsx (Technical Master + DID worksheets)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/technical-master/export",
+              "host": ["{{baseUrl}}"],
+              "path": ["feature", "projects", "{{projectId}}", "technical-master", "export"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "DID Specification (read-only — saving is via the combined Technical Master PUT)",
       "item": [
         {
           "name": "Get DID (by project)",
@@ -80,15 +178,14 @@
           "response": []
         },
         {
-          "name": "Save DID (create or update)",
+          "name": "Save DID directly — now removed (expect 405)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('saved', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('exists true', () => pm.expect(pm.response.json().data.exists).to.eql(true));"
+                  "pm.test('no standalone DID save (405)', () => pm.expect(pm.response.code).to.eql(405));"
                 ]
               }
             }
@@ -96,39 +193,7 @@
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"designIntentBrief\": {\n    \"lockedDesignIntent\": \"Full HVAC, electrical and plumbing systems per LEED Gold target; central chiller plant sized for future 20% expansion.\",\n    \"initialClientRfiResponse\": \"Client confirmed VRF over central plant is not preferred; proceed with central chiller plant.\",\n    \"greenRatingTarget\": \"IGBC\",\n    \"sustainabilityMandates\": \"Solar-ready roof, rainwater harvesting, EV charging provisions\"\n  },\n  \"deliverySchedule\": [\n    { \"id\": null, \"stageName\": \"MEP Space Plan & DBR / Sanction Drawings\", \"startDate\": \"2026-08-01\", \"endDate\": \"2026-08-15\" },\n    { \"id\": null, \"stageName\": \"MEP Schematic Drawings\", \"startDate\": \"2026-08-16\", \"endDate\": \"2026-08-30\" },\n    { \"id\": null, \"stageName\": \"MEP Design Development Stage\", \"startDate\": \"2026-09-01\", \"endDate\": \"2026-09-20\" },\n    { \"id\": null, \"stageName\": \"MEP Tender Drawing & BOQ\", \"startDate\": \"2026-09-21\", \"endDate\": \"2026-10-05\" },\n    { \"id\": null, \"stageName\": \"MEP GFC Stage\", \"startDate\": \"2026-10-06\", \"endDate\": \"2026-10-20\" }\n  ],\n  \"clientInformation\": {\n    \"clientName\": \"Marina Developments LLC\",\n    \"clientCompany\": \"Marina Developments LLC\",\n    \"contacts\": [\n      { \"id\": null, \"designation\": \"Project Owner\", \"name\": \"Jane Doe\", \"mailId\": \"jane.doe@marina.com\", \"contactNo\": \"+65 9000 0001\", \"isDefault\": true },\n      { \"id\": null, \"designation\": \"Project Head\", \"name\": \"John Roe\", \"mailId\": \"john.roe@marina.com\", \"contactNo\": \"+65 9000 0002\", \"isDefault\": true },\n      { \"id\": null, \"designation\": \"Project Coordinator\", \"name\": null, \"mailId\": null, \"contactNo\": null, \"isDefault\": true },\n      { \"id\": null, \"designation\": \"Site Lead\", \"name\": \"Alex Tan\", \"mailId\": \"alex.tan@marina.com\", \"contactNo\": \"+65 9000 0003\", \"isDefault\": false }\n    ]\n  },\n  \"architectTeam\": {\n    \"architectureFirm\": \"DesignCo Architects\",\n    \"contacts\": [\n      { \"id\": null, \"designation\": \"Lead Architect\", \"name\": \"Sam Lee\", \"mailId\": \"sam.lee@designco.com\", \"contactNo\": \"+65 9111 0001\", \"isDefault\": false }\n    ]\n  },\n  \"structureConsultantTeam\": {\n    \"structuralConsultancy\": \"StructCo Consultants\",\n    \"contacts\": [\n      { \"id\": null, \"designation\": \"Structural Lead\", \"name\": \"Priya Nair\", \"mailId\": \"priya.nair@structco.com\", \"contactNo\": \"+65 9222 0001\", \"isDefault\": false }\n    ]\n  }\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/technical-master/did",
-              "host": ["{{baseUrl}}"],
-              "path": ["feature", "projects", "{{projectId}}", "technical-master", "did"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Save DID - validation error example (blank locked design intent)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected as 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('validation error code', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_FAILED'));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"designIntentBrief\": {\n    \"lockedDesignIntent\": \"\",\n    \"initialClientRfiResponse\": null,\n    \"greenRatingTarget\": null,\n    \"sustainabilityMandates\": null\n  },\n  \"deliverySchedule\": [],\n  \"clientInformation\": { \"clientName\": null, \"clientCompany\": null, \"contacts\": [] },\n  \"architectTeam\": { \"architectureFirm\": null, \"contacts\": [] },\n  \"structureConsultantTeam\": { \"structuralConsultancy\": null, \"contacts\": [] }\n}"
-            },
+            "body": { "mode": "raw", "raw": "{}" },
             "url": {
               "raw": "{{baseUrl}}/feature/projects/{{projectId}}/technical-master/did",
               "host": ["{{baseUrl}}"],

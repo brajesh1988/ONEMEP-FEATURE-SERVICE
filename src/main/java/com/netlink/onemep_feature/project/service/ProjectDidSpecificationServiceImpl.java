@@ -2,7 +2,6 @@ package com.netlink.onemep_feature.project.service;
 
 import com.netlink.onemep_feature.common.adaptor.ApiResponseAdaptor;
 import com.netlink.onemep_feature.common.dto.ApiResponse;
-import com.netlink.onemep_feature.common.util.SecurityUtils;
 import com.netlink.onemep_feature.exception.ApplicationException;
 import com.netlink.onemep_feature.exception.ResourceNotFoundException;
 import com.netlink.onemep_feature.project.config.DidDefaultsProperties;
@@ -16,7 +15,6 @@ import com.netlink.onemep_feature.project.dto.DidSpecificationDto.Response;
 import com.netlink.onemep_feature.project.dto.DidSpecificationDto.StructureConsultantTeam;
 import com.netlink.onemep_feature.project.dto.DidSpecificationDto.UpsertRequest;
 import com.netlink.onemep_feature.project.model.DidPartyType;
-import com.netlink.onemep_feature.project.model.ProjectActivityLog;
 import com.netlink.onemep_feature.project.model.ProjectDeliverySchedule;
 import com.netlink.onemep_feature.project.model.ProjectDidArchitectTeam;
 import com.netlink.onemep_feature.project.model.ProjectDidClientInfo;
@@ -26,7 +24,6 @@ import com.netlink.onemep_feature.project.model.ProjectDidStructureConsultantTea
 import com.netlink.onemep_feature.project.model.ProjectMaster;
 import com.netlink.onemep_feature.project.model.ProjectTechnicalMaster;
 import com.netlink.onemep_feature.project.repo.DidGreenRatingOptionRepo;
-import com.netlink.onemep_feature.project.repo.ProjectActivityLogRepo;
 import com.netlink.onemep_feature.project.repo.ProjectDeliveryScheduleRepo;
 import com.netlink.onemep_feature.project.repo.ProjectDidArchitectTeamRepo;
 import com.netlink.onemep_feature.project.repo.ProjectDidClientInfoRepo;
@@ -59,44 +56,44 @@ public class ProjectDidSpecificationServiceImpl implements ProjectDidSpecificati
   private final ProjectDidArchitectTeamRepo architectTeamRepo;
   private final ProjectDidStructureConsultantTeamRepo structureTeamRepo;
   private final ProjectDidContactRepo contactRepo;
-  private final ProjectActivityLogRepo activityRepo;
   private final DidDefaultsProperties didDefaults;
   private final ApiResponseAdaptor apiResponseAdaptor;
 
   @Override
   @Transactional(readOnly = true)
   public ApiResponse<?> get(Long projectId) {
+    Response response = getResponseData(projectId);
+    return apiResponseAdaptor.success(
+        response.exists()
+            ? "DID specification fetched successfully."
+            : "DID specification has not been created for this project yet.",
+        response);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Response getResponseData(Long projectId) {
     ProjectMaster project = requireProject(projectId);
     ProjectTechnicalMaster master = technicalMasterRepo.findByProject_Id(projectId).orElse(null);
-    return apiResponseAdaptor.success(
-        master == null
-            ? "DID specification has not been created for this project yet."
-            : "DID specification fetched successfully.",
-        buildResponse(project, master));
+    return buildResponse(project, master);
   }
 
   @Override
   @Transactional
-  public ApiResponse<?> upsert(Long projectId, UpsertRequest request) {
-    ProjectMaster project = requireProject(projectId);
-    Long currentUser = SecurityUtils.getUserId().orElse(null);
-
-    ProjectTechnicalMaster master =
-        technicalMasterRepo
-            .findByProject_Id(projectId)
-            .orElseGet(() -> newMaster(project, currentUser));
-    master.setUpdatedBy(currentUser);
-    master = technicalMasterRepo.saveAndFlush(master);
-
+  public Response applyUpsert(
+      ProjectMaster project,
+      ProjectTechnicalMaster master,
+      UpsertRequest request,
+      Long currentUser) {
+    if (request == null) {
+      throw new ApplicationException("DID information is required.");
+    }
     saveDesignIntentBrief(master, request.designIntentBrief(), currentUser);
     saveDeliverySchedule(project, request.deliverySchedule(), currentUser);
     saveClientInformation(master, request.clientInformation(), currentUser);
     saveArchitectTeam(master, request.architectTeam(), currentUser);
     saveStructureConsultantTeam(master, request.structureConsultantTeam(), currentUser);
-
-    logActivity(project, "DID_SPECIFICATION_SAVED", "DID specification saved", currentUser);
-    return apiResponseAdaptor.success(
-        "DID specification saved successfully.", buildResponse(project, master));
+    return buildResponse(project, master);
   }
 
   @Override
@@ -118,7 +115,7 @@ public class ProjectDidSpecificationServiceImpl implements ProjectDidSpecificati
     }
     String lockedDesignIntent = trimToNull(dto.lockedDesignIntent());
     if (lockedDesignIntent == null) {
-      throw new ApplicationException("Locked design intent is required.");
+      throw new ApplicationException("Design brief is required.");
     }
     String greenRating = normalizeGreenRating(dto.greenRatingTarget());
 
@@ -170,7 +167,7 @@ public class ProjectDidSpecificationServiceImpl implements ProjectDidSpecificati
         continue; // blank trailing row — silently dropped
       }
       if (name == null) {
-        throw new ApplicationException("Stage name is required for a delivery schedule row.");
+        throw new ApplicationException("Every delivery stage needs a name.");
       }
       if (row.endDate() != null && row.startDate() == null) {
         throw new ApplicationException("Start date is required when an end date is set.");
@@ -444,23 +441,6 @@ public class ProjectDidSpecificationServiceImpl implements ProjectDidSpecificati
     return projectRepo
         .findById(projectId)
         .orElseThrow(() -> new ResourceNotFoundException("Project not found."));
-  }
-
-  private ProjectTechnicalMaster newMaster(ProjectMaster project, Long currentUser) {
-    ProjectTechnicalMaster master = new ProjectTechnicalMaster();
-    master.setProject(project);
-    master.setActive(Boolean.TRUE);
-    master.setCreatedBy(currentUser);
-    return master;
-  }
-
-  private void logActivity(ProjectMaster project, String action, String detail, Long currentUser) {
-    ProjectActivityLog entry = new ProjectActivityLog();
-    entry.setProject(project);
-    entry.setAction(action);
-    entry.setDetail(detail);
-    entry.setCreatedBy(currentUser);
-    activityRepo.save(entry);
   }
 
   private static String trimToNull(String raw) {

@@ -4,6 +4,7 @@ import com.netlink.onemep_feature.common.dto.ApiResponse;
 import com.netlink.onemep_feature.project.dto.TechnicalMasterDto;
 import com.netlink.onemep_feature.project.service.ProjectTechnicalMasterService;
 import com.netlink.onemep_feature.project.service.ProjectTechnicalMasterService.DownloadedFile;
+import com.netlink.onemep_feature.project.service.TechnicalMasterExcelService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class ProjectTechnicalMasterController {
 
   private final ProjectTechnicalMasterService technicalMasterService;
+  private final TechnicalMasterExcelService excelService;
 
   /** Editable form (heads with their fields; a head carries the in-project flag). */
   @GetMapping("/template")
@@ -142,5 +144,31 @@ public class ProjectTechnicalMasterController {
   public ResponseEntity<ApiResponse<?>> deleteAttachment(
       @PathVariable @NotNull Long projectId, @PathVariable @NotNull Long attachmentId) {
     return ResponseEntity.ok(technicalMasterService.deleteAttachment(projectId, attachmentId));
+  }
+
+  /** Blank .xlsx template (configured fields + project header) — fill the Value column. */
+  @GetMapping("/template-download")
+  public ResponseEntity<Resource> downloadTemplate(@PathVariable @NotNull Long projectId) {
+    return xlsxResponse(
+        excelService.buildTemplate(projectId), "technical-master-template-" + projectId + ".xlsx");
+  }
+
+  /** Filled .xlsx export — Technical Master + DID worksheets. */
+  @GetMapping("/export")
+  public ResponseEntity<Resource> export(@PathVariable @NotNull Long projectId) {
+    return xlsxResponse(
+        excelService.buildExport(projectId), "technical-master-export-" + projectId + ".xlsx");
+  }
+
+  private static ResponseEntity<Resource> xlsxResponse(byte[] data, String filename) {
+    return ResponseEntity.ok()
+        .header(
+            HttpHeaders.CONTENT_DISPOSITION,
+            ContentDisposition.attachment().filename(filename).build().toString())
+        .contentType(
+            MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+        .contentLength(data.length)
+        .body(new ByteArrayResource(data));
   }
 }

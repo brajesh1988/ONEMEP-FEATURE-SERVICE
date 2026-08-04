@@ -13,6 +13,9 @@ public interface ProjectTechnicalMasterService {
   /** The editable form (all heads with their fields) for the project's category. */
   ApiResponse<?> getTemplate(Long projectId);
 
+  /** Same read as {@link #getTemplate}, unwrapped — for internal callers (e.g. XLSX export). */
+  TechnicalMasterDto.Template getTemplateData(Long projectId);
+
   // ── Catalog edits (affect the whole category / all its projects) ────────────
 
   ApiResponse<?> createSection(Long projectId, TechnicalMasterDto.SectionRequest request);
@@ -32,6 +35,9 @@ public interface ProjectTechnicalMasterService {
 
   /** Consolidated read; returns a {@code exists:false} shell when none created yet. */
   ApiResponse<?> get(Long projectId);
+
+  /** Same read as {@link #get}, unwrapped — for internal callers (e.g. XLSX export). */
+  TechnicalMasterDto.Response getResponseData(Long projectId);
 
   /**
    * Create-or-replace values; rejects unknown keys and blocks save if a required field is empty.

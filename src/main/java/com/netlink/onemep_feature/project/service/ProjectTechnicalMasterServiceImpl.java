@@ -6,6 +6,7 @@ import com.netlink.onemep_feature.common.util.SecurityUtils;
 import com.netlink.onemep_feature.exception.ApplicationException;
 import com.netlink.onemep_feature.exception.ResourceNotFoundException;
 import com.netlink.onemep_feature.project.dto.DeliveryScheduleDto;
+import com.netlink.onemep_feature.project.dto.DidSpecificationDto;
 import com.netlink.onemep_feature.project.dto.TechnicalMasterDto;
 import com.netlink.onemep_feature.project.model.ProjectActivityLog;
 import com.netlink.onemep_feature.project.model.ProjectDeliverySchedule;
@@ -52,6 +53,7 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
   private final ProjectRepo projectRepo;
   private final ProjectDeliveryScheduleRepo deliveryScheduleRepo;
   private final ProjectActivityLogRepo activityRepo;
+  private final ProjectDidSpecificationService didSpecificationService;
   private final ApiResponseAdaptor apiResponseAdaptor;
 
   // ── Template ───────────────────────────────────────────────────────────────
@@ -59,9 +61,14 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
   @Override
   @Transactional(readOnly = true)
   public ApiResponse<?> getTemplate(Long projectId) {
-    ProjectMaster project = requireProject(projectId);
     return apiResponseAdaptor.success(
-        "Technical master template fetched successfully.", buildTemplate(project));
+        "Technical master template fetched successfully.", getTemplateData(projectId));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public TechnicalMasterDto.Template getTemplateData(Long projectId) {
+    return buildTemplate(requireProject(projectId));
   }
 
   private TechnicalMasterDto.Template buildTemplate(ProjectMaster project) {
@@ -203,13 +210,20 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
   @Override
   @Transactional(readOnly = true)
   public ApiResponse<?> get(Long projectId) {
+    TechnicalMasterDto.Response response = getResponseData(projectId);
+    return apiResponseAdaptor.success(
+        response.exists()
+            ? "Technical master fetched successfully."
+            : "Technical master has not been created for this project yet.",
+        response);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public TechnicalMasterDto.Response getResponseData(Long projectId) {
     ProjectMaster project = requireProject(projectId);
     ProjectTechnicalMaster master = technicalMasterRepo.findByProject_Id(projectId).orElse(null);
-    return apiResponseAdaptor.success(
-        master == null
-            ? "Technical master has not been created for this project yet."
-            : "Technical master fetched successfully.",
-        toResponse(project, master));
+    return toResponse(project, master);
   }
 
   @Override
@@ -269,9 +283,15 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
       fieldValueRepo.save(row);
     }
 
+    // ONEMEP-31: Technical Master and DID are one form, saved together — applyUpsert() joins this
+    // same transaction (propagation REQUIRED), so a DID validation failure rolls back the field
+    // values saved above too.
+    DidSpecificationDto.Response didResponse =
+        didSpecificationService.applyUpsert(project, master, request.did(), currentUser);
+
     logActivity(project, "TECHNICAL_MASTER_SAVED", "Technical master saved");
     return apiResponseAdaptor.success(
-        "Technical master saved successfully.", toResponse(project, master));
+        "Technical Master saved.", toResponse(project, master, didResponse));
   }
 
   @Override
@@ -407,6 +427,11 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
 
   private TechnicalMasterDto.Response toResponse(
       ProjectMaster project, ProjectTechnicalMaster master) {
+    return toResponse(project, master, null);
+  }
+
+  private TechnicalMasterDto.Response toResponse(
+      ProjectMaster project, ProjectTechnicalMaster master, DidSpecificationDto.Response did) {
     List<DeliveryScheduleDto.Response> deliverySchedule =
         deliveryScheduleRepo.findByProject_IdOrderByPlannedDateAscIdAsc(project.getId()).stream()
             .map(this::toDeliveryResponse)
@@ -424,6 +449,7 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
           List.of(),
           deliverySchedule,
           clientInfo,
+          did,
           null,
           null,
           null,
@@ -444,6 +470,7 @@ public class ProjectTechnicalMasterServiceImpl implements ProjectTechnicalMaster
         attachments,
         deliverySchedule,
         clientInfo,
+        did,
         master.getCreatedBy(),
         master.getCreatedDate(),
         master.getUpdatedBy(),

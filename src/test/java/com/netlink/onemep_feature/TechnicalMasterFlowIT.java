@@ -1,5 +1,6 @@
 package com.netlink.onemep_feature;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -24,15 +25,18 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * End-to-end flow for the editable, category-driven Technical Master (ONEMEP-29): the seeded
- * template per category, building a form from scratch (add head + fields) on a custom category,
- * saving values, the mandatory-field save block, switching a head out of the project or deleting
- * the field to unblock, and attachments.
+ * End-to-end flow for the editable, category-driven Technical Master (ONEMEP-29) and its combined
+ * DID tab (ONEMEP-31): the seeded template per category, building a form from scratch (add head +
+ * fields) on a custom category, saving values, the mandatory-field save block, switching a head out
+ * of the project or deleting the field to unblock, attachments, and the combined Technical Master +
+ * DID save (one action, atomic across both tabs, no standalone DID save route).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -55,6 +59,14 @@ class TechnicalMasterFlowIT {
     registry.add("spring.cloud.discovery.enabled", () -> "false");
     registry.add("feature.notifications.enabled", () -> "false");
   }
+
+  /**
+   * Minimal always-valid DID payload, appended to Technical Master saves that don't care about DID.
+   */
+  private static final String MINIMAL_DID =
+      "\"did\":{\"designIntentBrief\":{\"lockedDesignIntent\":\"Design brief\"},"
+          + "\"deliverySchedule\":[],\"clientInformation\":{\"contacts\":[]},"
+          + "\"architectTeam\":{\"contacts\":[]},\"structureConsultantTeam\":{\"contacts\":[]}}";
 
   @Autowired private MockMvc mockMvc;
   @Autowired private ObjectMapper objectMapper;
@@ -126,13 +138,15 @@ class TechnicalMasterFlowIT {
                 .andReturn());
     String plotKey = t2.get("sections").get(0).get("fields").get(0).get("key").asText();
 
-    // Save a value.
+    // Save a value — every Technical Master save now also carries the DID payload (ONEMEP-31).
     perform(
             put("/projects/" + projectId + "/technical-master")
-                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
+                .content(withDid("{\"values\":{\"" + plotKey + "\":\"1000\"}}")))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.exists").value(true))
-        .andExpect(jsonPath("$.data.values['" + plotKey + "']").value("1000"));
+        .andExpect(jsonPath("$.data.values['" + plotKey + "']").value("1000"))
+        .andExpect(
+            jsonPath("$.data.did.designIntentBrief.lockedDesignIntent").value("Design brief"));
 
     // Add a MANDATORY field.
     JsonNode t3 =
@@ -157,7 +171,7 @@ class TechnicalMasterFlowIT {
     // Save now blocked: the mandatory field is empty.
     perform(
             put("/projects/" + projectId + "/technical-master")
-                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
+                .content(withDid("{\"values\":{\"" + plotKey + "\":\"1000\"}}")))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
 
@@ -168,7 +182,7 @@ class TechnicalMasterFlowIT {
         .andExpect(status().isOk());
     perform(
             put("/projects/" + projectId + "/technical-master")
-                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
+                .content(withDid("{\"values\":{\"" + plotKey + "\":\"1000\"}}")))
         .andExpect(status().isOk());
 
     // Back in the project the block returns; deleting the field clears it for good.
@@ -178,13 +192,13 @@ class TechnicalMasterFlowIT {
         .andExpect(status().isOk());
     perform(
             put("/projects/" + projectId + "/technical-master")
-                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
+                .content(withDid("{\"values\":{\"" + plotKey + "\":\"1000\"}}")))
         .andExpect(status().isBadRequest());
     perform(delete("/projects/" + projectId + "/technical-master/fields/" + mandatoryId))
         .andExpect(status().isOk());
     perform(
             put("/projects/" + projectId + "/technical-master")
-                .content("{\"values\":{\"" + plotKey + "\":\"1000\"}}"))
+                .content(withDid("{\"values\":{\"" + plotKey + "\":\"1000\"}}")))
         .andExpect(status().isOk());
 
     // Attachment upload + type guard.
@@ -204,19 +218,26 @@ class TechnicalMasterFlowIT {
   }
 
   @Test
-  void didSpecification_defaultsSaveAndReload_roundTrips() throws Exception {
+  void combinedSave_savesBothTabsTogether_atomicallyAndWithNoStandaloneDidRoute() throws Exception {
+    long customCat =
+        idOf(
+            perform(
+                    post("/categories")
+                        .content("{\"name\":\"DidCombined\",\"prefix\":\"dc2\",\"seriesCode\":98}"))
+                .andExpect(status().isCreated())
+                .andReturn());
     long projectId =
         idOf(
             perform(
                     post("/projects")
                         .content(
-                            "{\"name\":\"DID"
-                                + " Flow\",\"categoryId\":1,\"type\":\"NON_CONFIRMED\","
-                                + "\"priority\":\"MEDIUM\"}"))
+                            "{\"name\":\"DID Combined Flow\",\"categoryId\":"
+                                + customCat
+                                + ",\"type\":\"NON_CONFIRMED\",\"priority\":\"MEDIUM\"}"))
                 .andExpect(status().isCreated())
                 .andReturn());
 
-    // Nothing saved yet: configured defaults are synthesized, not persisted.
+    // Nothing saved yet: configured DID defaults are synthesized, not persisted.
     perform(get("/projects/" + projectId + "/technical-master/did"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.exists").value(false))
@@ -230,9 +251,15 @@ class TechnicalMasterFlowIT {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data[*].code", Matchers.hasItem("IGBC")));
 
-    String savePayload =
-        "{\"designIntentBrief\":{\"lockedDesignIntent\":\"Locked intent"
-            + " text\",\"initialClientRfiResponse\":\"RFI"
+    // No standalone DID save route exists — the endpoint is gone entirely (ONEMEP-31).
+    perform(put("/projects/" + projectId + "/technical-master/did").content("{}"))
+        .andExpect(status().isMethodNotAllowed());
+
+    // ── One combined save: Technical Master remarks + full DID payload, one action ──────────
+    String firstSavePayload =
+        "{\"remarks\":\"Initial"
+            + " remarks\",\"values\":{},\"did\":{\"designIntentBrief\":{\"lockedDesignIntent\":\"Locked"
+            + " intent text\",\"initialClientRfiResponse\":\"RFI"
             + " response\",\"greenRatingTarget\":\"IGBC\",\"sustainabilityMandates\":\"Solar,"
             + " RWH\"},\"deliverySchedule\":[{\"stageName\":\"MEP Space Plan & DBR / Sanction"
             + " Drawings\",\"startDate\":\"2026-01-01\",\"endDate\":\"2026-02-01\"},"
@@ -243,33 +270,35 @@ class TechnicalMasterFlowIT {
             + " Coordinator\",\"isDefault\":true},{\"designation\":\"Site Lead\",\"name\":\"Jane"
             + " Doe\",\"mailId\":\"jane@acme.com\",\"contactNo\":\"+91"
             + " 9876543210\",\"isDefault\":false}]},"
+            // Blank contactNo sent as "" (not null) — regression check: @Pattern must accept an
+            // empty string on an optional field, matching how the frontend leaves it unfilled.
             + "\"architectTeam\":{\"architectureFirm\":\"ArchCo\",\"contacts\":[{\"designation\":\"Lead"
             + " Architect\",\"name\":\"John"
-            + " Roe\",\"mailId\":\"john@archco.com\",\"contactNo\":\"+91"
-            + " 9876500000\",\"isDefault\":false}]},"
-            + "\"structureConsultantTeam\":{\"structuralConsultancy\":\"StructCo\",\"contacts\":[]}"
+            + " Roe\",\"mailId\":\"john@archco.com\",\"contactNo\":\"\",\"isDefault\":false}]},"
+            + "\"structureConsultantTeam\":{\"structuralConsultancy\":\"StructCo\",\"contacts\":[]}}"
             + "}";
 
     JsonNode saved =
         dataOf(
-            perform(put("/projects/" + projectId + "/technical-master/did").content(savePayload))
+            perform(put("/projects/" + projectId + "/technical-master").content(firstSavePayload))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.exists").value(true))
+                .andExpect(jsonPath("$.data.remarks").value("Initial remarks"))
                 .andExpect(
-                    jsonPath("$.data.designIntentBrief.lockedDesignIntent")
+                    jsonPath("$.data.did.designIntentBrief.lockedDesignIntent")
                         .value("Locked intent text"))
-                .andExpect(jsonPath("$.data.deliverySchedule.length()").value(1))
-                .andExpect(jsonPath("$.data.clientInformation.contacts.length()").value(4))
+                .andExpect(jsonPath("$.data.did.deliverySchedule.length()").value(1))
+                .andExpect(jsonPath("$.data.did.clientInformation.contacts.length()").value(4))
                 .andReturn());
     long projectOwnerContactId = -1;
-    for (JsonNode c : saved.path("clientInformation").path("contacts")) {
+    for (JsonNode c : saved.path("did").path("clientInformation").path("contacts")) {
       if ("Project Owner".equals(c.path("designation").asText())) {
         projectOwnerContactId = c.path("id").asLong();
       }
     }
-    org.assertj.core.api.Assertions.assertThat(projectOwnerContactId).isPositive();
+    assertThat(projectOwnerContactId).isPositive();
 
-    // Reload: persisted values come back, defaults don't reappear.
+    // Reload: persisted values come back on both the DID GET and the base Technical Master GET.
     perform(get("/projects/" + projectId + "/technical-master/did"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.exists").value(true))
@@ -282,27 +311,50 @@ class TechnicalMasterFlowIT {
     // Same underlying table as ONEMEP-15's delivery schedule — the saved stage shows up there too.
     perform(get("/projects/" + projectId + "/technical-master"))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.remarks").value("Initial remarks"))
         .andExpect(
             jsonPath("$.data.deliverySchedule[*].milestone")
                 .value(Matchers.hasItem("MEP Space Plan & DBR / Sanction Drawings")));
 
+    // ── Atomicity: a DID-only validation failure rolls back the Technical Master side too ────
+    String failingPayload =
+        "{\"remarks\":\"SHOULD_NOT_PERSIST\",\"values\":{},"
+            + "\"did\":{\"designIntentBrief\":{\"lockedDesignIntent\":\"Still valid\"},"
+            + "\"deliverySchedule\":[{\"stageName\":\"Bad Stage\",\"startDate\":\"2026-05-10\","
+            + "\"endDate\":\"2026-05-01\"}],"
+            + "\"clientInformation\":{\"contacts\":[]},"
+            + "\"architectTeam\":{\"contacts\":[]},"
+            + "\"structureConsultantTeam\":{\"contacts\":[]}}"
+            + "}";
+    perform(put("/projects/" + projectId + "/technical-master").content(failingPayload))
+        .andExpect(status().isBadRequest());
+
+    // Nothing partially applied: remarks is still the value from the earlier successful save.
+    perform(get("/projects/" + projectId + "/technical-master"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.remarks").value("Initial remarks"));
+
     // Dropping a default contact row (omitting its id) is rejected, not silently deleted.
     String removeDefaultPayload =
-        "{"
-            + "\"designIntentBrief\":{\"lockedDesignIntent\":\"Locked intent text\"},"
+        "{\"values\":{},"
+            + "\"did\":{\"designIntentBrief\":{\"lockedDesignIntent\":\"Locked intent text\"},"
             + "\"deliverySchedule\":[],"
             + "\"clientInformation\":{\"clientName\":\"Acme\",\"clientCompany\":\"Acme Co\","
             + "\"contacts\":[]},"
             + "\"architectTeam\":{\"contacts\":[]},"
-            + "\"structureConsultantTeam\":{\"contacts\":[]}"
+            + "\"structureConsultantTeam\":{\"contacts\":[]}}"
             + "}";
-    perform(put("/projects/" + projectId + "/technical-master/did").content(removeDefaultPayload))
+    perform(put("/projects/" + projectId + "/technical-master").content(removeDefaultPayload))
         .andExpect(status().isBadRequest());
   }
 
-  private org.springframework.test.web.servlet.ResultActions perform(
-      org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder builder)
-      throws Exception {
+  private String withDid(String valuesOnlyJson) {
+    // valuesOnlyJson looks like {"values":{...}} — splice MINIMAL_DID in as a sibling key.
+    String body = valuesOnlyJson.trim();
+    return body.substring(0, body.length() - 1) + "," + MINIMAL_DID + "}";
+  }
+
+  private ResultActions perform(MockHttpServletRequestBuilder builder) throws Exception {
     return mockMvc.perform(
         builder.contentType(MediaType.APPLICATION_JSON).with(jwt().jwt(j -> j.subject("1"))));
   }
