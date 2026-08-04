@@ -308,13 +308,26 @@ class TechnicalMasterFlowIT {
                 .value("MEP Space Plan & DBR / Sanction Drawings"))
         .andExpect(jsonPath("$.data.architectTeam.architectureFirm").value("ArchCo"));
 
-    // Same underlying table as ONEMEP-15's delivery schedule — the saved stage shows up there too.
+    // Same underlying table as ONEMEP-15's delivery schedule — the saved stage shows up there too,
+    // start/end included (ONEMEP-31: Project Overview's Delivery Schedule card reads these).
     perform(get("/projects/" + projectId + "/technical-master"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.remarks").value("Initial remarks"))
         .andExpect(
             jsonPath("$.data.deliverySchedule[*].milestone")
-                .value(Matchers.hasItem("MEP Space Plan & DBR / Sanction Drawings")));
+                .value(Matchers.hasItem("MEP Space Plan & DBR / Sanction Drawings")))
+        .andExpect(jsonPath("$.data.deliverySchedule[0].start").value("2026-01-01"))
+        .andExpect(jsonPath("$.data.deliverySchedule[0].end").value("2026-02-01"));
+
+    // Project Overview surfaces the exact same start/end (this is what the Overview screen's
+    // Delivery Schedule card renders — it was showing "—" before start/end were added to the DTO).
+    perform(get("/projects/" + projectId + "/overview"))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.data.deliverySchedule[*].milestone")
+                .value(Matchers.hasItem("MEP Space Plan & DBR / Sanction Drawings")))
+        .andExpect(jsonPath("$.data.deliverySchedule[0].start").value("2026-01-01"))
+        .andExpect(jsonPath("$.data.deliverySchedule[0].end").value("2026-02-01"));
 
     // ── Atomicity: a DID-only validation failure rolls back the Technical Master side too ────
     String failingPayload =

@@ -242,7 +242,9 @@ public class ProjectServiceImpl implements ProjectService {
         d.getStatus(),
         d.getRemarks(),
         d.getUpdatedBy(),
-        d.getUpdatedDate());
+        d.getUpdatedDate(),
+        d.getStartDate(),
+        d.getEndDate());
   }
 
   private StakeholderDto.Response toStakeholderResponse(ProjectStakeholder s) {

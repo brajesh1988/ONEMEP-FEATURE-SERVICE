@@ -38,5 +38,8 @@ public final class DeliveryScheduleDto {
       String status,
       String remarks,
       Long updatedBy,
-      LocalDateTime updatedDate) {}
+      LocalDateTime updatedDate,
+      /** DID tab's stage start/end (ONEMEP-31) — null for general, non-DID milestones. */
+      LocalDate start,
+      LocalDate end) {}
 }

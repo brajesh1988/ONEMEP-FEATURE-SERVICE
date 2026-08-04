@@ -126,6 +126,8 @@ public class ProjectDeliveryScheduleServiceImpl implements ProjectDeliverySchedu
         d.getStatus(),
         d.getRemarks(),
         d.getUpdatedBy(),
-        d.getUpdatedDate());
+        d.getUpdatedDate(),
+        d.getStartDate(),
+        d.getEndDate());
   }
 }
