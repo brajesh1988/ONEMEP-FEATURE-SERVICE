@@ -1,0 +1,9 @@
+Zone,Discipline,Type,Subject,Floor,Stage,Title,Sheet Size,Scale,Prepared By,Work Progress
+Z10,M,SCH,CHW,00,DD,Valid row one,A1,1:100,A. Sethiya,Not Started
+Z11,,SCH,CHW,00,DD,Missing discipline,A1,,,
+Z12,M,SCH,XYZ,00,DD,Unknown subject code,A1,,,
+Z13,M,SCH,CHW,00,DD,12345,A1,,,
+Z10,M,SCH,CHW,00,DD,Duplicate number of row 2,A1,,,
+Z14,M,SCH,CHW,00,DD,Valid row one,A1,,,
+Z15,M,SCH,CHW,00,DD,Bad progress value,A1,,,Nearly done
+Z16,M,SCH,CHW,00,DD,Valid row two,A1,1:100,B. Kumar,Issued

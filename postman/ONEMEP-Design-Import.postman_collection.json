@@ -1,0 +1,755 @@
+{
+  "info": {
+    "name": "ONEMEP Design Import (bulk spreadsheet import)",
+    "_postman_id": "7e1c4a92-6b3d-4f57-8a10-designimport0001",
+    "description": "Bulk Design importer — ONEMEP-35 (import half).\n\nHOW TO USE\n1. Select an environment (baseUrl / email / password), or edit the collection variable defaults.\n2. Run **Auth > Login** first — its test script stores `accessToken` as a collection variable.\n3. Set `projectId` to a real Project. Everything imports into exactly one Project, and BOTH duplicate rules are scoped to it.\n4. Run **Setup > ...** to see which segment codes your environment actually has, then fill a spreadsheet with those codes.\n5. In each upload request, attach the CSVs shipped next to this file (`postman/design-import-*.csv`). Postman cannot store file contents inside a collection, so the `files` form field starts empty and you must pick the file from disk once.\n\nPaths go through the API Gateway with the `/feature` prefix, which the gateway rewrites to the service's real context path `/feature-service`.\n\nTHE SHAPE OF THIS API\nSubmission is **asynchronous** and answers **202 Accepted**, not 201 — nothing is created at that point. The response carries a `batchId`; progress is read from `GET /feature/design-imports/{batchId}`. Several 150 MB spreadsheets cannot be parsed inside a request without timing out at the gateway, which is why the ticket describes per-file progress at all.\n\nPer-file status is one of: Ready, Uploading, Processing, Imported, Completed with errors, Failed.\n\nPARTIAL SUCCESS IS THE POINT\nValid rows import; invalid rows are reported and do not block them. A bad row fails its row, an unreadable file fails its file, and neither takes the batch down.\n\nTHE DUPLICATE RULE (the thing to test hardest)\nDesign Number and Design Title are TWO INDEPENDENT per-Project rules, never a composite key:\n  - same Number + different Title  -> reject (duplicate number)\n  - different Number + same Title  -> reject (duplicate title)\n  - same + same                    -> reject (both reported)\n  - different + different          -> valid\nRows are checked against the register AND against rows earlier in the same batch, including across two files uploaded together.\n\nSPREADSHEET COLUMNS\nRequired: Discipline, Type, Subject, Floor, Stage, Title.\nOptional: Zone (blank becomes 'XX'), Sheet Size, Scale, Prepared By, Work Progress.\nHeader matching ignores case and whitespace, so 'SHEET  SIZE' and 'Sheet Size' are the same column. Segment cells carry catalogue CODES (M, SCH, CHW, 00, DD), not labels and not ids.\n\nA WARNING ABOUT EXCEL AND LEADING ZEROS\nA Floor code of `00` typed into an unformatted Excel cell is stored by Excel as the number 0 and reads back as '0'. The leading zero is genuinely not in the file and nothing server-side can recover it — the row fails with \"Floor '0' is not configured.\" Format that column as Text in any .xlsx template you hand out. The CSV samples here are unaffected.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9000"
+    },
+    {
+      "key": "email",
+      "value": "user@onemep.com"
+    },
+    {
+      "key": "password",
+      "value": "ChangeMe@123"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "projectId",
+      "value": "1"
+    },
+    {
+      "key": "batchId",
+      "value": ""
+    },
+    {
+      "key": "designId",
+      "value": ""
+    },
+    {
+      "key": "pollAttempt",
+      "value": "0"
+    },
+    {
+      "key": "maxPollAttempts",
+      "value": "30"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('login ok', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const d = b.data || {};",
+                  "if (d.accessToken) { pm.collectionVariables.set('accessToken', d.accessToken); }",
+                  "if (d.refreshToken) { pm.collectionVariables.set('refreshToken', d.refreshToken); }",
+                  "if (d.twoFactorRequired) { console.warn('2FA required — complete /identity/auth/2fa flow to obtain a token'); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/identity/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "identity",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Setup — which codes exist in this environment",
+      "description": "The importer resolves segment cells against `lookup_value` by CODE. These are the codes a spreadsheet may use. The seeded catalogue is PROVISIONAL (V16): only the codes visible in the Sprint 3 acceptance criteria are present, and FLOOR carries just '00' and 'L01' from V18. If your rows fail with \"... is not configured\", the code is genuinely absent — add it to the catalogue rather than loosening the importer.",
+      "item": [
+        {
+          "name": "Discipline codes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ok', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || [];",
+                  "console.log('DISCIPLINE codes:', d.map(v => v.code).join(', '));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/discipline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "discipline"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Type codes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/design-type",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "design-type"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Subject codes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/subject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "subject"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Floor codes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/floor",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "floor"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Stage codes",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/stage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "stage"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Design Register before importing (baseline)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 50 }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/designs/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "designs",
+                "list"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Import — the happy path",
+      "item": [
+        {
+          "name": "1. Submit a batch (expect 202 + batchId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('accepted, not created — the work has not started yet', () => pm.response.to.have.status(202));",
+                  "const d = pm.response.json().data || {};",
+                  "pm.test('carries a batch id to poll', () => pm.expect(d.batchId).to.be.a('number'));",
+                  "pm.collectionVariables.set('batchId', d.batchId);",
+                  "pm.collectionVariables.set('pollAttempt', '0');",
+                  "console.log('Poll:', d.statusUrl);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Attach `postman/design-import-sample.csv` to the `files` field. Multiple files may be attached — up to 4 per batch, 150 MB each; they are treated as ONE submission, which is why a duplicate spanning two of them is still a duplicate.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "design-import-sample.csv — .xlsx or .csv, max 150 MB"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/design-imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "design-imports"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. Poll status until it finishes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ok', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || {};",
+                  "const terminal = ['IMPORTED', 'COMPLETED_WITH_ERRORS', 'FAILED'];",
+                  "console.log(d.statusLabel + ' — ' + (d.summary || ''));",
+                  "(d.files || []).forEach(f => console.log('  ' + f.filename + ': ' + f.statusLabel + ' (' + f.importedRows + '/' + f.totalRows + ')'));",
+                  "",
+                  "if (terminal.indexOf(d.status) >= 0) {",
+                  "  pm.test('reached a terminal state', () => pm.expect(terminal).to.include(d.status));",
+                  "  return;",
+                  "}",
+                  "",
+                  "// Still running. Re-run this request during a collection run, with a hard ceiling",
+                  "// so a stuck batch fails the run rather than looping forever.",
+                  "const attempt = Number(pm.collectionVariables.get('pollAttempt') || 0) + 1;",
+                  "pm.collectionVariables.set('pollAttempt', String(attempt));",
+                  "if (attempt >= Number(pm.collectionVariables.get('maxPollAttempts') || 30)) {",
+                  "  pm.test('import finished within the poll budget', () => pm.expect.fail('still ' + d.status + ' after ' + attempt + ' polls'));",
+                  "  return;",
+                  "}",
+                  "postman.setNextRequest(pm.info.requestName);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "description": "Per-file state and per-row validation errors. Safe to call before the batch finishes — it reports whatever is true right now, and `summary` reads \"Import in progress.\" until it completes.",
+            "url": {
+              "raw": "{{baseUrl}}/feature/design-imports/{{batchId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "design-imports",
+                "{{batchId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. Design Register now shows the imported Designs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ok', () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json().data || {};",
+                  "const rows = page.content || [];",
+                  "console.log('Register holds ' + page.totalElements + ' Designs');",
+                  "if (rows.length) { pm.collectionVariables.set('designId', rows[0].id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 50 }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/designs/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "designs",
+                "list"
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. An imported Design records how it came to exist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ok', () => pm.response.to.have.status(200));",
+                  "const rows = (pm.response.json().data || {}).content || [];",
+                  "const imported = rows.filter(r => r.action === 'DESIGN_IMPORTED');",
+                  "pm.test('trail opens with DESIGN_IMPORTED', () => pm.expect(imported.length).to.be.above(0));",
+                  "imported.forEach(r => console.log(r.action + ': ' + r.detail));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Imported Designs carry `source = IMPORT` (never MANUAL) and open their audit trail with a DESIGN_IMPORTED event naming the file and row they came from.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20 }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/activities/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "activities",
+                "list"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Import — partial success and the duplicate rules",
+      "description": "The behaviour worth testing by hand. Run the happy path first: several of these depend on the sample file's Designs already being in the register.",
+      "item": [
+        {
+          "name": "Partial success — good rows import, bad rows are reported",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('accepted', () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('batchId', (pm.response.json().data || {}).batchId);",
+                  "pm.collectionVariables.set('pollAttempt', '0');",
+                  "console.log('Now run \"2. Poll status until it finishes\". Expect:');",
+                  "console.log('  batch  : Completed with errors');",
+                  "console.log('  summary: 2 of 8 Designs imported. 6 rows require correction.');",
+                  "console.log('  errors : missing Discipline (row 3), unknown Subject (row 4),');",
+                  "console.log('           numeric-only Title (row 5), duplicate number (rows 2 and 6),');",
+                  "console.log('           duplicate title (rows 2 and 7), bad Work Progress (row 8)');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Attach `postman/design-import-with-errors.csv`. Eight rows: two valid, six breaking a different rule each. The two valid rows import — that is the requirement. Note rows 6 and 7: one collides on Design Number with row 2, the other on Title with row 2, and they are reported as two different rules because that is what they are.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "design-import-with-errors.csv"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/design-imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "design-imports"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cross-file duplicate — two files, one batch",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('accepted', () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('batchId', (pm.response.json().data || {}).batchId);",
+                  "pm.collectionVariables.set('pollAttempt', '0');",
+                  "console.log('Now poll. Expect 3 of 4 imported, and the SECOND file to report:');",
+                  "console.log(\"  Rows 2 of 'design-import-crossfile-a.csv' and 2 contain the same Design Number.\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Attach BOTH `design-import-crossfile-a.csv` and `design-import-crossfile-b.csv`, in that order, to the `files` field (use the file picker on each of the two `files` rows).\n\nThese two files exist specifically for this scenario and use zones (Z30–Z32) that no other sample touches, so the collision is genuinely WITHIN the batch and not with something already in the register. That distinction matters: reusing an already-imported file here would produce the ordinary \"already exists in this Project\" message instead, because the register is checked once the in-batch index comes up empty.\n\nFile A row 2 and file B row 2 both use Zone Z30 with identical segments, so they generate the same Design Number. Two files uploaded together are ONE submission, so this is a duplicate — and because the earlier row is in a different file, the message names that file. File B's other row is unique and still imports, which is partial success working across a file boundary.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "design-import-crossfile-a.csv (first)"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "design-import-crossfile-b.csv (second)"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/design-imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "design-imports"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Re-import the same file — every row is now a duplicate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('accepted', () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('batchId', (pm.response.json().data || {}).batchId);",
+                  "pm.collectionVariables.set('pollAttempt', '0');",
+                  "console.log('Now poll. Every row collides on BOTH rules, so each row should carry TWO messages:');",
+                  "console.log(\"  Row N — Design Number '...' already exists in this Project.\");",
+                  "console.log('  Row N — A Design with this Title already exists in this Project.');",
+                  "console.log('Batch status: Failed (nothing imported), summary: No Designs were imported. 5 rows require correction.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Attach `postman/design-import-sample.csv` again, after the happy path has already imported it. Same number AND same title on every row, so both rules fire on every row — proving they are evaluated independently rather than one short-circuiting the other.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "design-import-sample.csv (again)"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/design-imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "design-imports"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Import — rejections and bad files",
+      "item": [
+        {
+          "name": "Unsupported file type (expect 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected at submission, not queued', () => pm.response.to.have.status(400));",
+                  "console.log(((pm.response.json() || {}).error || {}).message);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Attach any .pdf/.docx. Extension is checked at submission because it is cheap and certain — telling someone now beats accepting the file and making them poll for the disappointment.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "anything that is not .xlsx or .csv"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/design-imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "design-imports"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Corrupt .xlsx — fails its own file only",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('accepted — the extension is fine, the bytes are not', () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('batchId', (pm.response.json().data || {}).batchId);",
+                  "pm.collectionVariables.set('pollAttempt', '0');",
+                  "console.log('Now poll. Expect Completed with errors — 2 of 2 rows imported from the CSV, and:');",
+                  "console.log('  corrupt.xlsx: Failed — The file could not be read as an Excel workbook. It may be');",
+                  "console.log('  corrupt, password-protected, or saved in an older .xls format.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "description": "Attach a text file renamed to `.xlsx` AND `design-import-alongside-corrupt.csv`, in that order.\n\nWhether a file is really a workbook can only be known by opening it, which happens in the background — so the extension check at submission lets this through and the failure lands on that ONE file. The CSV beside it still imports, which is the point: an unreadable file fails its own file and nothing else.\n\nThe companion CSV uses zones (Z40–Z41) no other sample touches, so it still imports cleanly even after the rest of this collection has been run against the same Project. Reusing an already-imported file here would leave every row rejected as a duplicate and quietly destroy the demonstration.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "a text file renamed to .xlsx"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "design-import-alongside-corrupt.csv"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/design-imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "design-imports"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Unknown Project (expect 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('not found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "design-import-sample.csv"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/999999/design-imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "999999",
+                "design-imports"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Unknown batch (expect 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('not found', () => pm.response.to.have.status(404));",
+                  "pm.test('message', () => pm.expect(pm.response.json().error.message).to.eql('This import is no longer available.'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/design-imports/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "design-imports",
+                "999999"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
