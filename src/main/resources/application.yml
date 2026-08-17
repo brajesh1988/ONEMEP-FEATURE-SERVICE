@@ -119,9 +119,10 @@ storage:
   local:
     root: ${STORAGE_LOCAL_ROOT:./var/uploads}
   s3:
-    bucket: ${S3_BUCKET:}
-    region: ${AWS_REGION:ap-south-1}
-    endpoint: ${S3_ENDPOINT:}                  # set only for MinIO / LocalStack
+    bucket: ${S3_BUCKET:onemep-project-files-2026}
+    region: ${AWS_REGION:eu-north-1}             # must match the bucket's own region, or S3 answers 301
+    prefix: ${S3_PREFIX:OneMep}                  # key prefix inside the bucket; blank writes at the root
+    endpoint: ${S3_ENDPOINT:}                    # ONLY for MinIO / LocalStack — leave blank for real AWS
 
 # Project change notifications (ONEMEP-14). Disable entirely with NOTIFICATIONS_ENABLED=false.
 feature:

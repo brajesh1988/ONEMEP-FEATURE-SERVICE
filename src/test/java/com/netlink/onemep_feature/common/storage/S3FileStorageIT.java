@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -25,6 +26,8 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /**
@@ -46,6 +49,9 @@ class S3FileStorageIT {
   private static S3Client client;
   private static S3Presigner presigner;
   private static S3FileStorage storage;
+
+  /** Same bucket, same client — but writing beneath a configured key prefix. */
+  private static S3FileStorage prefixed;
 
   @BeforeAll
   static void startStorage() {
@@ -72,6 +78,7 @@ class S3FileStorageIT {
 
     client.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build());
     storage = new S3FileStorage(client, presigner, BUCKET);
+    prefixed = new S3FileStorage(client, presigner, BUCKET, "OneMep");
   }
 
   @AfterAll
@@ -82,6 +89,84 @@ class S3FileStorageIT {
     if (client != null) {
       client.close();
     }
+  }
+
+  // ── configured key prefix ─────────────────────────────────────────────────
+
+  /**
+   * The prefix has to be applied to the real object key, not merely remembered. This asserts
+   * against the raw S3 key rather than through the storage abstraction, because the whole risk is
+   * that reads and writes agree with each other while both ignore the prefix.
+   */
+  @Test
+  void put_withAConfiguredPrefix_writesBeneathThatPrefixInTheBucket() throws IOException {
+    StorageKey key = StorageKey.of("designs", 90L, "files", 1L, "r0");
+    prefixed.put(
+        key,
+        new ByteArrayInputStream("prefixed bytes".getBytes(StandardCharsets.UTF_8)),
+        14L,
+        "text/plain");
+
+    List<String> keys =
+        client
+            .listObjectsV2(ListObjectsV2Request.builder().bucket(BUCKET).prefix("OneMep/").build())
+            .contents()
+            .stream()
+            .map(S3Object::key)
+            .toList();
+
+    assertThat(keys).contains("OneMep/designs/90/files/1/r0");
+  }
+
+  @Test
+  void prefixedStorage_roundTripsThroughEveryOperation() throws IOException {
+    StorageKey key = StorageKey.of("designs", 91L, "r0");
+
+    prefixed.put(
+        key,
+        new ByteArrayInputStream("round trip".getBytes(StandardCharsets.UTF_8)),
+        10L,
+        "text/plain");
+
+    assertThat(prefixed.exists(key)).isTrue();
+    try (InputStream in = prefixed.open(key)) {
+      assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("round trip");
+    }
+    assertThat(prefixed.delete(key)).isTrue();
+    assertThat(prefixed.exists(key)).isFalse();
+  }
+
+  /**
+   * A presigned URL that ignored the prefix would 404 for the viewer while everything else worked.
+   */
+  @Test
+  void presignedUrl_fromPrefixedStorage_resolvesThePrefixedObject() throws Exception {
+    StorageKey key = StorageKey.of("designs", 92L, "r0");
+    prefixed.put(
+        key,
+        new ByteArrayInputStream("signed and prefixed".getBytes(StandardCharsets.UTF_8)),
+        19L,
+        "text/plain");
+
+    URI url = prefixed.presignedGetUrl(key, Duration.ofMinutes(2));
+
+    assertThat(url.toString()).contains("OneMep/designs/92/r0");
+    try (InputStream in = url.toURL().openStream()) {
+      assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8))
+          .isEqualTo("signed and prefixed");
+    }
+  }
+
+  /** The two must not collide: the same logical key is a different object under a prefix. */
+  @Test
+  void prefixedAndUnprefixedStorage_addressDifferentObjects() throws IOException {
+    StorageKey key = StorageKey.of("designs", 93L, "r0");
+
+    storage.put(
+        key, new ByteArrayInputStream("root".getBytes(StandardCharsets.UTF_8)), 4L, "text/plain");
+
+    assertThat(storage.exists(key)).isTrue();
+    assertThat(prefixed.exists(key)).isFalse();
   }
 
   @Test

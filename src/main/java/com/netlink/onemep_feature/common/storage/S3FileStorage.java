@@ -23,6 +23,12 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
  * ceiling this service allows, reading a file into memory to discover its size would be a reliable
  * way to exhaust the heap.
  *
+ * <p>Objects are written beneath an optional configured key prefix, so this service can share a
+ * bucket with other things. The prefix is applied here and only here — the {@link StorageKey} the
+ * rest of the application passes around, and the {@code storage_key} persisted against each row,
+ * stay prefix-free. That is deliberate: the prefix is a deployment detail, and baking it into
+ * stored keys would strand every existing row the day it changes.
+ *
  * <p>Downloads should go through {@link #presignedGetUrl} wherever the caller can follow a redirect
  * — it hands the transfer to S3 instead of occupying a request thread for its duration. Authorise
  * before issuing one: a presigned URL carries its own credentials and never touches this service's
@@ -34,18 +40,45 @@ public class S3FileStorage implements FileStorage {
   private final S3Client client;
   private final S3Presigner presigner;
   private final String bucket;
+  private final String prefix;
 
   public S3FileStorage(S3Client client, S3Presigner presigner, String bucket) {
+    this(client, presigner, bucket, "");
+  }
+
+  public S3FileStorage(S3Client client, S3Presigner presigner, String bucket, String prefix) {
     this.client = client;
     this.presigner = presigner;
     this.bucket = bucket;
-    log.info("S3 file storage using bucket {}", bucket);
+    this.prefix = normalize(prefix);
+    log.info(
+        "S3 file storage using bucket {}{}",
+        bucket,
+        this.prefix.isEmpty() ? "" : " under prefix '" + this.prefix + "/'");
+  }
+
+  /** Belt and braces over {@code StorageProperties.S3}, which normalises the configured value. */
+  private static String normalize(String raw) {
+    String value = raw == null ? "" : raw.trim();
+    while (value.startsWith("/")) {
+      value = value.substring(1);
+    }
+    while (value.endsWith("/")) {
+      value = value.substring(0, value.length() - 1);
+    }
+    return value;
+  }
+
+  /** The object key actually sent to S3: the logical key beneath the configured prefix. */
+  private String objectKey(StorageKey key) {
+    return prefix.isEmpty() ? key.value() : prefix + "/" + key.value();
   }
 
   @Override
   public StoredObject put(StorageKey key, InputStream data, long sizeBytes, String contentType) {
     try {
-      PutObjectRequest.Builder request = PutObjectRequest.builder().bucket(bucket).key(key.value());
+      PutObjectRequest.Builder request =
+          PutObjectRequest.builder().bucket(bucket).key(objectKey(key));
       if (contentType != null && !contentType.isBlank()) {
         request.contentType(contentType);
       }
@@ -59,7 +92,8 @@ public class S3FileStorage implements FileStorage {
   @Override
   public InputStream open(StorageKey key) {
     try {
-      return client.getObject(GetObjectRequest.builder().bucket(bucket).key(key.value()).build());
+      return client.getObject(
+          GetObjectRequest.builder().bucket(bucket).key(objectKey(key)).build());
     } catch (NoSuchKeyException e) {
       throw new StorageException("Stored file not found: " + key, e);
     } catch (S3Exception e) {
@@ -77,7 +111,7 @@ public class S3FileStorage implements FileStorage {
       return false;
     }
     try {
-      client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key.value()).build());
+      client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(objectKey(key)).build());
       return true;
     } catch (S3Exception e) {
       throw new StorageException("Unable to delete the stored file.", e);
@@ -87,7 +121,7 @@ public class S3FileStorage implements FileStorage {
   @Override
   public boolean exists(StorageKey key) {
     try {
-      client.headObject(HeadObjectRequest.builder().bucket(bucket).key(key.value()).build());
+      client.headObject(HeadObjectRequest.builder().bucket(bucket).key(objectKey(key)).build());
       return true;
     } catch (NoSuchKeyException e) {
       return false;
@@ -113,7 +147,7 @@ public class S3FileStorage implements FileStorage {
               GetObjectPresignRequest.builder()
                   .signatureDuration(ttl)
                   .getObjectRequest(
-                      GetObjectRequest.builder().bucket(bucket).key(key.value()).build())
+                      GetObjectRequest.builder().bucket(bucket).key(objectKey(key)).build())
                   .build())
           .url()
           .toURI();

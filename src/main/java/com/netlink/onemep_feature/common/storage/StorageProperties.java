@@ -23,7 +23,7 @@ public record StorageProperties(String provider, Long presignedUrlTtlSeconds, Lo
             ? 300L
             : presignedUrlTtlSeconds;
     local = local == null ? new Local(null) : local;
-    s3 = s3 == null ? new S3(null, null, null) : s3;
+    s3 = s3 == null ? new S3(null, null, null, null) : s3;
   }
 
   /**
@@ -37,8 +37,29 @@ public record StorageProperties(String provider, Long presignedUrlTtlSeconds, Lo
 
   /**
    * @param bucket target bucket
-   * @param region AWS region
-   * @param endpoint optional override for S3-compatible stores (MinIO, LocalStack)
+   * @param region AWS region — must be the bucket's own region. S3 answers 301 Moved Permanently
+   *     for a request signed against the wrong one, which surfaces as an opaque failure on the
+   *     first upload rather than at startup.
+   * @param prefix key prefix inside the bucket, so this service's objects can share a bucket with
+   *     other things. Blank means write at the bucket root.
+   * @param endpoint override for S3-compatible stores (MinIO, LocalStack) ONLY. It is an HTTP(S)
+   *     service endpoint, never a bucket or a path — an {@code s3://} URI here fails every call
+   *     with "Custom endpoint ... was not a valid URI". Leave blank for real AWS, which derives the
+   *     endpoint from the region.
    */
-  public record S3(String bucket, String region, String endpoint) {}
+  public record S3(String bucket, String region, String prefix, String endpoint) {
+
+    public S3 {
+      // Normalised once, here, so every caller sees the same shape: no leading or trailing slash,
+      // and blank rather than null. StorageKey forbids both '//' and a leading '/', so an
+      // un-normalised prefix would fail its constructor rather than doing something sensible.
+      prefix = prefix == null ? "" : prefix.trim();
+      while (prefix.startsWith("/")) {
+        prefix = prefix.substring(1);
+      }
+      while (prefix.endsWith("/")) {
+        prefix = prefix.substring(0, prefix.length() - 1);
+      }
+    }
+  }
 }

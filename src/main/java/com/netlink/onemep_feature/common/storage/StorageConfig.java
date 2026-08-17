@@ -62,7 +62,7 @@ public class StorageConfig {
       throw new IllegalStateException(
           "storage.provider=s3 requires storage.s3.bucket to be set (S3_BUCKET).");
     }
-    return new S3FileStorage(s3Client, s3Presigner, bucket);
+    return new S3FileStorage(s3Client, s3Presigner, bucket, properties.s3().prefix());
   }
 
   /**
@@ -89,9 +89,39 @@ public class StorageConfig {
     builder.region(Region.of(properties.s3().region()));
     String endpoint = properties.s3().endpoint();
     if (endpoint != null && !endpoint.isBlank()) {
-      builder.endpointOverride(URI.create(endpoint));
+      builder.endpointOverride(requireHttpEndpoint(endpoint));
       builder.serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build());
     }
     return builder;
+  }
+
+  /**
+   * Rejects an endpoint that is not an HTTP(S) service address.
+   *
+   * <p>The SDK accepts anything URI-shaped when the client is built and only complains on the first
+   * request — so a bucket URI here ({@code s3://my-bucket/some/path}, an easy thing to reach for)
+   * starts the service cleanly and then fails every upload with "Custom endpoint ... was not a
+   * valid URI". Failing at startup instead turns a runtime mystery into a config error that names
+   * itself.
+   */
+  static URI requireHttpEndpoint(String endpoint) {
+    URI uri;
+    try {
+      uri = URI.create(endpoint.trim());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalStateException(
+          "storage.s3.endpoint (S3_ENDPOINT) is not a valid URI: " + endpoint, e);
+    }
+    String scheme = uri.getScheme();
+    if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
+      throw new IllegalStateException(
+          "storage.s3.endpoint (S3_ENDPOINT) must be an http(s) service endpoint for an"
+              + " S3-compatible store such as MinIO or LocalStack, not a bucket or object path."
+              + " Got: '"
+              + endpoint
+              + "'. For real AWS S3 leave it blank and set storage.s3.region to the bucket's"
+              + " region; use storage.s3.prefix (S3_PREFIX) for a key prefix within the bucket.");
+    }
+    return uri;
   }
 }
