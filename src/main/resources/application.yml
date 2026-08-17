@@ -23,11 +23,18 @@ spring:
     time-zone: ${APP_TIMEZONE:Asia/Kolkata}
     default-property-inclusion: non_null
 
-  # Specs-sheet uploads (ONEMEP-15): allow files up to 150 MB.
+  # Uploads (ONEMEP-15 specs sheets, ONEMEP-39 design files, ONEMEP-35 import batches):
+  # 150 MB per file.
+  #
+  # The request cap is per *request*, not per file, so it has to admit a whole multi-file batch:
+  # ONEMEP-35 imports up to ImportFileRules.MAX_FILES_PER_BATCH spreadsheets at the same 150 MB
+  # ceiling, and the previous 155 MB cap made a two-file batch impossible. 620 MB is four files
+  # plus multipart overhead. Raising it does not raise per-file exposure, and files spool to disk
+  # rather than the heap (file-size-threshold defaults to 0).
   servlet:
     multipart:
       max-file-size: ${MAX_UPLOAD_FILE_SIZE:150MB}
-      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:155MB}
+      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:620MB}
 
   # SMTP for project lifecycle/priority notifications (ONEMEP-14). When MAIL_HOST is unset,
   # no JavaMailSender is created and the notification service degrades to a no-op (logs only).
@@ -101,6 +108,20 @@ grpc:
 # forwarded by the gateway (defence in depth — the service never trusts the network alone).
 jwt:
   public-key: ${JWT_PUBLIC_KEY:./keys/jwt-public.pem}
+
+# Where uploaded bytes live. Switching provider is a config change, not a code change —
+# everything writes through the FileStorage interface. Credentials are never configured here;
+# the AWS/Azure SDKs resolve them from the ambient environment (instance role, container
+# credentials, environment variables) so no secret enters application config.
+storage:
+  provider: ${STORAGE_PROVIDER:local}          # local | s3 | azure-blob
+  presigned-url-ttl-seconds: ${STORAGE_PRESIGNED_TTL:300}
+  local:
+    root: ${STORAGE_LOCAL_ROOT:./var/uploads}
+  s3:
+    bucket: ${S3_BUCKET:}
+    region: ${AWS_REGION:ap-south-1}
+    endpoint: ${S3_ENDPOINT:}                  # set only for MinIO / LocalStack
 
 # Project change notifications (ONEMEP-14). Disable entirely with NOTIFICATIONS_ENABLED=false.
 feature:

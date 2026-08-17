@@ -26,4 +26,12 @@ public class TeamRoleMaster extends BaseEntity {
 
   @Column(name = "is_active", nullable = false)
   private Boolean active = Boolean.TRUE;
+
+  /**
+   * Marks this as the Principal role (ONEMEP-40). A Project's Principal is whichever of its members
+   * holds a role flagged here — the approval flow never references a user id directly, so moving
+   * the role moves the Principal.
+   */
+  @Column(name = "is_principal", nullable = false)
+  private Boolean principal = Boolean.FALSE;
 }

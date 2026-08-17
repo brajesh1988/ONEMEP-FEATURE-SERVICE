@@ -86,3 +86,6 @@ target/generated-sources/protobuf/
 # ===== Spring Boot / Actuator =====
 heapdump
 threaddump
+
+# Local FileStorage provider root (storage.provider=local)
+var/
