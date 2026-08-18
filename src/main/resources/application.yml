@@ -114,7 +114,10 @@ jwt:
 # the AWS/Azure SDKs resolve them from the ambient environment (instance role, container
 # credentials, environment variables) so no secret enters application config.
 storage:
-  provider: ${STORAGE_PROVIDER:local}          # local | s3 | azure-blob
+  # local | s3 | azure-blob. S3 is the deployed backend, so it is the default here and a developer
+  # working offline overrides it with STORAGE_PROVIDER=local rather than the other way round —
+  # a default that differs from production is a default that hides production-only faults.
+  provider: ${STORAGE_PROVIDER:s3}
   presigned-url-ttl-seconds: ${STORAGE_PRESIGNED_TTL:300}
   local:
     root: ${STORAGE_LOCAL_ROOT:./var/uploads}
