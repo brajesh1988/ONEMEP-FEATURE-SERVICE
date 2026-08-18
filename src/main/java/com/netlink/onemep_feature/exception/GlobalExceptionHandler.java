@@ -6,6 +6,7 @@ import com.netlink.onemep_feature.common.dto.ErrorCode;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
@@ -96,13 +97,44 @@ public class GlobalExceptionHandler {
                 true));
   }
 
+  /**
+   * Validation failures on a handler method's parameters.
+   *
+   * <p>Spring raises this instead of {@link MethodArgumentNotValidException} whenever a controller
+   * method mixes constrained parameters with a validated body — {@code @PathVariable @NotNull Long
+   * projectId} alongside {@code @Valid @RequestBody}, which is the shape of most endpoints here. It
+   * therefore covers a large part of the API, and previously answered every one of them with a bare
+   * "Invalid request parameters." while discarding the per-field messages the DTOs carefully
+   * define. A caller was told only that something was wrong, never what — which is a genuinely
+   * expensive thing to do to whoever is integrating.
+   *
+   * <p>The field messages are now unpacked so the response matches {@link
+   * #handleValidation(MethodArgumentNotValidException)}: the first problem as the message, all of
+   * them in {@code details}.
+   */
   @ExceptionHandler(HandlerMethodValidationException.class)
   public ResponseEntity<ApiResponse<Void>> handleMethodValidation(
       HandlerMethodValidationException ex) {
+
+    List<String> errors =
+        ex.getAllValidationResults().stream()
+            .flatMap(result -> result.getResolvableErrors().stream())
+            .map(MessageSourceResolvable::getDefaultMessage)
+            .filter(message -> message != null && !message.isBlank())
+            .distinct()
+            // Sorted deliberately. Bean Validation reports violations as an unordered Set, so two
+            // identical requests can disagree about which failure comes first — meaning the single
+            // message a user actually sees would change at random between attempts, and any test
+            // asserting it would be flaky. Alphabetical is arbitrary but stable, which is the
+            // property that matters.
+            .sorted()
+            .toList();
+
+    // Falls back to the old wording rather than an empty message, for the case where a constraint
+    // carries no default message of its own.
+    String first = errors.isEmpty() ? "Invalid request parameters." : errors.get(0);
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-        .body(
-            apiResponseAdaptor.error(
-                ErrorCode.VALIDATION_FAILED, "Invalid request parameters.", true));
+        .body(apiResponseAdaptor.error(ErrorCode.VALIDATION_FAILED, first, errors, true));
   }
 
   @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

@@ -156,6 +156,52 @@ class DesignRegisterIT {
     assertThat(designCount()).isEqualTo(1);
   }
 
+  /**
+   * A rejected payload has to say WHICH field is wrong.
+   *
+   * <p>This endpoint mixes a constrained {@code @PathVariable} with a validated body, so Spring
+   * raises HandlerMethodValidationException rather than MethodArgumentNotValidException — and that
+   * handler used to answer a bare "Invalid request parameters." with an empty details array,
+   * discarding every message the DTO defines. A caller integrating against it learned only that
+   * something was wrong. Most endpoints in this service have that same shape, so the gap was wide.
+   */
+  @Test
+  void create_withMissingSegments_namesEveryFieldThatIsWrong() throws Exception {
+    perform(
+            post("/projects/" + projectId + "/designs")
+                .content("{\"title\":\"test test\",\"zoneCode\":\"Z09\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.message").value("Discipline is required."))
+        // Order is asserted, not just membership: the handler sorts precisely so the one message
+        // a user sees cannot vary between identical requests.
+        .andExpect(
+            jsonPath("$.error.details")
+                .value(
+                    org.hamcrest.Matchers.contains(
+                        "Discipline is required.",
+                        "Floor is required.",
+                        "Stage is required.",
+                        "Subject is required.",
+                        "Type is required.")));
+  }
+
+  /** The exact payload a frontend sent while integrating: segment CODES instead of ids. */
+  @Test
+  void create_withSegmentCodesInsteadOfIds_explainsWhatIsMissing() throws Exception {
+    perform(
+            post("/projects/" + projectId + "/designs")
+                .content(
+                    """
+                    {"title":"test test","zone":"ZONE","discipline":"M","type":"PLN",
+                     "subject":"CHW","floor":"00","stage":"SD","progress":"In progress"}
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error.details", org.hamcrest.Matchers.hasSize(5)))
+        .andExpect(
+            jsonPath("$.error.details")
+                .value(org.hamcrest.Matchers.hasItem("Discipline is required.")));
+  }
+
   /** The mirror rule: a Title already in use is a duplicate even under a different number. */
   @Test
   void create_sameTitleDifferentDiscipline_isRejectedAsADuplicateTitle() throws Exception {
