@@ -1,0 +1,3061 @@
+{
+  "info": {
+    "name": "ONEMEP Sprint 3 — full API surface",
+    "_postman_id": "3f2a1c88-77bd-4e91-a5c3-onemepsprint3001",
+    "description": "Every endpoint Sprint 3 (ONEMEP-32 … ONEMEP-44) added to ONEMEP-FEATURE-SERVICE — 55 requests across checklists, the design register, task details, files and versions, the approval engine, discussion, time tracking, the activity trail, the lookup catalogue and the bulk spreadsheet importer.\n\nHOW TO RUN\n1. Pick an environment (baseUrl / email / password) or edit the collection variables.\n2. Run **00 · Auth > Login** — its test script stores `accessToken`.\n3. Run **01 · Setup** — captures a valid id per segment catalogue.\n4. Set `projectId` to a real Project, and `approverId` to a real user id (ideally your own, so the approval decisions are permitted).\n5. Then run folders in order, or fire individual requests.\n\nThe folders are numbered because a full run chains state: a checklist and a Design are created, a file is uploaded against that Design, an approval is raised against that file, and **99 · Cleanup** removes it all so the run repeats cleanly.\n\nPaths go through the API Gateway with the `/feature` prefix, which the gateway rewrites to the service's real context path `/feature-service`. Hitting a service directly? Replace `/feature` with `/feature-service`.\n\nWHAT TO LOOK AT FIRST\n* **The duplicate rule** (folder 04) — Design Number and Title are TWO INDEPENDENT per-Project rules, never a composite key. Only a Design differing in BOTH is valid.\n* **Segments are ids, not codes** in the Design APIs; the importer takes codes instead, because a spreadsheet has no ids. Folder 04 includes the exact code-instead-of-id mistake a frontend made, and what the error now tells you.\n* **Partial success** (folders 06 and 11) — one bad file or row never discards the good ones.\n\nRESPONSES are wrapped in ApiResponse<T>: `{success, message, timestamp, data}` on success, `{success:false, error:{code, message, details[]}}` on failure. Validation failures list every offending field in `details`.\n\nFILE UPLOADS: Postman cannot store file contents inside a collection, so every `file` field starts empty — pick a file from disk once. Import samples ship in `postman/design-import-*.csv`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://16.192.90.23:9000"
+    },
+    {
+      "key": "email",
+      "value": "user@onemep.com"
+    },
+    {
+      "key": "password",
+      "value": "ChangeMe@123"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "projectId",
+      "value": "1"
+    },
+    {
+      "key": "approverId",
+      "value": "1"
+    },
+    {
+      "key": "disciplineId",
+      "value": "1"
+    },
+    {
+      "key": "typeId",
+      "value": "1"
+    },
+    {
+      "key": "subjectId",
+      "value": "1"
+    },
+    {
+      "key": "floorId",
+      "value": "1"
+    },
+    {
+      "key": "stageId",
+      "value": "1"
+    },
+    {
+      "key": "lookupEntryId",
+      "value": ""
+    },
+    {
+      "key": "checklistId",
+      "value": ""
+    },
+    {
+      "key": "singleItemId",
+      "value": ""
+    },
+    {
+      "key": "designId",
+      "value": ""
+    },
+    {
+      "key": "designNumber",
+      "value": ""
+    },
+    {
+      "key": "tagId",
+      "value": ""
+    },
+    {
+      "key": "fileId",
+      "value": ""
+    },
+    {
+      "key": "versionId",
+      "value": ""
+    },
+    {
+      "key": "commentId",
+      "value": ""
+    },
+    {
+      "key": "approvalRequestId",
+      "value": ""
+    },
+    {
+      "key": "messageId",
+      "value": ""
+    },
+    {
+      "key": "notificationId",
+      "value": ""
+    },
+    {
+      "key": "timeEntryId",
+      "value": ""
+    },
+    {
+      "key": "batchId",
+      "value": ""
+    },
+    {
+      "key": "pollAttempt",
+      "value": "0"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 · Auth",
+      "description": "Run first. Stores accessToken as a collection variable; every other request inherits it.",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login ok', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || {};",
+                  "if (d.accessToken) pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "if (d.refreshToken) pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "if (d.twoFactorRequired) console.warn('2FA required — finish the /identity/auth/2fa flow');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/identity/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "identity",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 · Setup — resolve segment ids",
+      "description": "Run after Login. Captures one id per catalogue into collection variables so every later request has something valid to send.\n\nThe seeded catalogue is PROVISIONAL (V16): only the codes named in the Sprint 3 acceptance criteria exist. FLOOR carries just 00 and L01.",
+      "item": [
+        {
+          "name": "Options: discipline",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/discipline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "discipline"
+              ]
+            },
+            "description": "Segment options for discipline. The Design APIs take the numeric **id**, not the code — this is where the frontend gets it. Codes are what the spreadsheet importer uses instead."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || [];",
+                  "if (d.length) pm.collectionVariables.set('disciplineId', d[0].id);",
+                  "console.log('discipline codes:', d.map(v => v.code).join(', '));",
+                  "pm.test('every option carries id, code and label', () => d.forEach(v => { pm.expect(v).to.have.property('id'); pm.expect(v).to.have.property('code'); }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Options: design-type",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/design-type",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "design-type"
+              ]
+            },
+            "description": "Segment options for design-type. The Design APIs take the numeric **id**, not the code — this is where the frontend gets it. Codes are what the spreadsheet importer uses instead."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || [];",
+                  "if (d.length) pm.collectionVariables.set('typeId', d[0].id);",
+                  "console.log('design-type codes:', d.map(v => v.code).join(', '));",
+                  "pm.test('every option carries id, code and label', () => d.forEach(v => { pm.expect(v).to.have.property('id'); pm.expect(v).to.have.property('code'); }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Options: subject",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/subject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "subject"
+              ]
+            },
+            "description": "Segment options for subject. The Design APIs take the numeric **id**, not the code — this is where the frontend gets it. Codes are what the spreadsheet importer uses instead."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || [];",
+                  "if (d.length) pm.collectionVariables.set('subjectId', d[0].id);",
+                  "console.log('subject codes:', d.map(v => v.code).join(', '));",
+                  "pm.test('every option carries id, code and label', () => d.forEach(v => { pm.expect(v).to.have.property('id'); pm.expect(v).to.have.property('code'); }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Options: floor",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/floor",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "floor"
+              ]
+            },
+            "description": "Segment options for floor. The Design APIs take the numeric **id**, not the code — this is where the frontend gets it. Codes are what the spreadsheet importer uses instead."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || [];",
+                  "if (d.length) pm.collectionVariables.set('floorId', d[0].id);",
+                  "console.log('floor codes:', d.map(v => v.code).join(', '));",
+                  "pm.test('every option carries id, code and label', () => d.forEach(v => { pm.expect(v).to.have.property('id'); pm.expect(v).to.have.property('code'); }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Options: stage",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/stage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "stage"
+              ]
+            },
+            "description": "Segment options for stage. The Design APIs take the numeric **id**, not the code — this is where the frontend gets it. Codes are what the spreadsheet importer uses instead."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || [];",
+                  "if (d.length) pm.collectionVariables.set('stageId', d[0].id);",
+                  "console.log('stage codes:', d.map(v => v.code).join(', '));",
+                  "pm.test('every option carries id, code and label', () => d.forEach(v => { pm.expect(v).to.have.property('id'); pm.expect(v).to.have.property('code'); }));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 · Lookup catalogue — CRUD",
+      "description": "The reference data behind every Design segment (Discipline, Type, Subject, Floor, Zone, Stage). One table, keyed by lookup_type, with a composite FK so a Floor id can never be stored in a discipline column.",
+      "item": [
+        {
+          "name": "List (paged)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/discipline/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "discipline",
+                "list"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20, \"sortBy\": \"createdDate\", \"sortDirection\": \"DESC\" },\n  \"filters\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create entry",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/subject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "subject"
+              ]
+            },
+            "description": "Codes are stored upper-case and compared case-insensitively. A duplicate code within the same catalogue returns 409.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"HTW\",\n  \"label\": \"Hot Water\",\n  \"sortOrder\": 9,\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = d.id;",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('lookupEntryId', v);",
+                  "console.log('lookupEntryId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get entry",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/entries/{{lookupEntryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "entries",
+                "{{lookupEntryId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update entry",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/entries/{{lookupEntryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "entries",
+                "{{lookupEntryId}}"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"HTW\",\n  \"label\": \"Hot Water Services\",\n  \"sortOrder\": 9,\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deactivate entry",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/entries/{{lookupEntryId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "entries",
+                "{{lookupEntryId}}",
+                "status"
+              ]
+            },
+            "description": "Inactive values are rejected by every Sprint 3 story — 'One or more selected values are no longer available.'",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Duplicate code (expect 409)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/lookups/subject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "lookups",
+                "subject"
+              ]
+            },
+            "description": "CHW is seeded by V16, so this must conflict.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"CHW\",\n  \"label\": \"Duplicate on purpose\",\n  \"sortOrder\": 1,\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 · Checklists (ONEMEP-32/33/34)",
+      "description": "Checklist master and its applicability model. `recordType` is immutable after insert. A CHECKLIST carries 1–30 items; a SINGLE_ITEM carries exactly one and has no name.\n\nIn `appliesTo`, an EMPTY list means **Any** for that segment.",
+      "item": [
+        {
+          "name": "Create checklist",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recordType\": \"CHECKLIST\",\n  \"name\": \"MEP Schematic Review\",\n  \"items\": [\n    \"Pipe sizing verified against load schedule\",\n    \"Clearances checked against structural drawings\",\n    \"Valve schedule matches the layout\"\n  ],\n  \"appliesTo\": {\n    \"disciplineIds\": [{{disciplineId}}],\n    \"typeIds\": [{{typeId}}],\n    \"subjectIds\": [{{subjectId}}]\n  },\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = d.id;",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('checklistId', v);",
+                  "console.log('checklistId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create single item",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists"
+              ]
+            },
+            "description": "Empty applicability lists mean **Any** — this item matches every Design.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recordType\": \"SINGLE_ITEM\",\n  \"items\": [\"Drawing title block completed\"],\n  \"appliesTo\": {\n    \"disciplineIds\": [],\n    \"typeIds\": [],\n    \"subjectIds\": []\n  },\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = d.id;",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('singleItemId', v);",
+                  "console.log('singleItemId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List (paged, searchable)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists",
+                "list"
+              ]
+            },
+            "description": "`search` spans the entry name and the applicability codes/labels.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20 },\n  \"filters\": { \"search\": \"MEP\" }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get one",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists/{{checklistId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists",
+                "{{checklistId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists/{{checklistId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists",
+                "{{checklistId}}"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recordType\": \"CHECKLIST\",\n  \"name\": \"MEP Schematic Review (rev B)\",\n  \"items\": [\n    \"Pipe sizing verified against load schedule\",\n    \"Clearances checked against structural drawings\"\n  ],\n  \"appliesTo\": {\n    \"disciplineIds\": [{{disciplineId}}],\n    \"typeIds\": [{{typeId}}],\n    \"subjectIds\": [{{subjectId}}]\n  },\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change recordType (expect 4xx)",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists/{{checklistId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists",
+                "{{checklistId}}"
+              ]
+            },
+            "description": "recordType is immutable after insert.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recordType\": \"SINGLE_ITEM\",\n  \"items\": [\"Trying to change the type\"],\n  \"appliesTo\": { \"disciplineIds\": [], \"typeIds\": [], \"subjectIds\": [] },\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected', () => pm.expect([400,409,422]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Toggle active",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists/{{checklistId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists",
+                "{{checklistId}}",
+                "status"
+              ]
+            },
+            "description": "Separate endpoint because the grid toggle saves on its own.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Applicable to a segment combination",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists/applicable?disciplineId={{disciplineId}}&typeId={{typeId}}&subjectId={{subjectId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists",
+                "applicable"
+              ],
+              "query": [
+                {
+                  "key": "disciplineId",
+                  "value": "{{disciplineId}}"
+                },
+                {
+                  "key": "typeId",
+                  "value": "{{typeId}}"
+                },
+                {
+                  "key": "subjectId",
+                  "value": "{{subjectId}}"
+                }
+              ]
+            },
+            "description": "Resolves the items the approval popup shows. An Any (empty) applicability matches everything."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete impact",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists/{{checklistId}}/impact",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists",
+                "{{checklistId}}",
+                "impact"
+              ]
+            },
+            "description": "Matching-Design count, for the delete confirmation dialog."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 · Design register (ONEMEP-35/36/37)",
+      "description": "Design Number is generated, never supplied:\n\n    ONEMEP-<ProjectCode>-<Zone>-<Disc>-<Type>-<Subject>-<Floor>-<Stage>\n\n**The duplicate rule is TWO independent per-Project rules, never a composite key.** Same number + different title → reject. Different number + same title → reject. Only differing in BOTH is valid.\n\nSegments and the number are immutable after creation.",
+      "item": [
+        {
+          "name": "List (search + filters)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/designs/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "designs",
+                "list"
+              ]
+            },
+            "description": "Search spans Design Number, Title and Discipline code/label. Newest-touched first unless you sort.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20 },\n  \"filters\": { \"search\": \"\", \"disciplineId\": null, \"stageId\": null, \"workProgress\": null }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Number preview",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/designs/number-preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "designs",
+                "number-preview"
+              ]
+            },
+            "description": "Live preview while the Add form is being filled in. Nothing is created.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"zoneCode\": \"Z01\",\n  \"disciplineId\": {{disciplineId}},\n  \"typeId\": {{typeId}},\n  \"subjectId\": {{subjectId}},\n  \"floorId\": {{floorId}},\n  \"stageId\": {{stageId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/designs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "designs"
+              ]
+            },
+            "description": "**Segments are ids, not codes.** Zone is free text and the only optional one — blank becomes XX. workProgress is an enum: NOT_STARTED | IN_PROGRESS | ISSUED | COMPLETED.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"zoneCode\": \"Z01\",\n  \"disciplineId\": {{disciplineId}},\n  \"typeId\": {{typeId}},\n  \"subjectId\": {{subjectId}},\n  \"floorId\": {{floorId}},\n  \"stageId\": {{stageId}},\n  \"title\": \"Chilled water schematic — level 01\",\n  \"sheetSize\": \"A1\",\n  \"scale\": \"1:100\",\n  \"preparedBy\": \"A. Sethiya\",\n  \"workProgress\": \"NOT_STARTED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = d.id;",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('designId', v);",
+                  "console.log('designId =', v);",
+                  "pm.collectionVariables.set('designNumber', d.designNumber);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create with CODES instead of ids (expect 400)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/designs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "designs"
+              ]
+            },
+            "description": "The mistake a frontend actually made. Field names differ (zone/zoneCode, discipline/disciplineId, progress/workProgress) and segments must be ids. The response now names every missing field in `details`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"test test\",\n  \"zone\": \"ZONE\",\n  \"discipline\": \"M\",\n  \"type\": \"PLN\",\n  \"subject\": \"CHW\",\n  \"floor\": \"00\",\n  \"stage\": \"SD\",\n  \"progress\": \"In progress\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));",
+                  "const e = pm.response.json().error || {};",
+                  "pm.test('names every field that is wrong', () => pm.expect(e.details).to.have.length.of.at.least(5));",
+                  "console.log('details:', (e.details||[]).join(' | '));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Duplicate Design Number (expect 409)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/designs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "designs"
+              ]
+            },
+            "description": "Same segments → same number. Rejected even though the Title differs.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"zoneCode\": \"Z01\",\n  \"disciplineId\": {{disciplineId}},\n  \"typeId\": {{typeId}},\n  \"subjectId\": {{subjectId}},\n  \"floorId\": {{floorId}},\n  \"stageId\": {{stageId}},\n  \"title\": \"A completely different title\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "console.log(pm.response.json().error.message);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Duplicate Title (expect 409)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/designs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "designs"
+              ]
+            },
+            "description": "Different number, same Title. Also rejected — the mirror rule.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"zoneCode\": \"Z99\",\n  \"disciplineId\": {{disciplineId}},\n  \"typeId\": {{typeId}},\n  \"subjectId\": {{subjectId}},\n  \"floorId\": {{floorId}},\n  \"stageId\": {{stageId}},\n  \"title\": \"Chilled water schematic — level 01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));",
+                  "console.log(pm.response.json().error.message);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get one",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update (descriptive fields only)",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}"
+              ]
+            },
+            "description": "Segments and the Design Number are absent by design — a payload that cannot express a change cannot smuggle one through.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Chilled water schematic — level 01 (rev B)\",\n  \"sheetSize\": \"A0\",\n  \"scale\": \"1:50\",\n  \"preparedBy\": \"A. Sethiya\",\n  \"workProgress\": \"IN_PROGRESS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 · Design task (ONEMEP-38)",
+      "description": "The Design doubles as a task, so these live on the same row. Duration is derived from start/due, never stored.\n\nThe `clearX` booleans exist because JSON null is ambiguous — it cannot distinguish 'leave alone' from 'set to empty'.",
+      "item": [
+        {
+          "name": "Get task",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/task",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "task"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update task",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/task",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "task"
+              ]
+            },
+            "description": "priority: HIGH|MEDIUM|LOW. reminder: NONE|ON_DUE_DATE|ONE_DAY_BEFORE|THREE_DAYS_BEFORE|ONE_WEEK_BEFORE.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ownerId\": {{approverId}},\n  \"priority\": \"HIGH\",\n  \"completionPct\": 40,\n  \"startDate\": \"2026-08-01\",\n  \"dueDate\": \"2026-09-15\",\n  \"reminder\": \"ONE_DAY_BEFORE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clear the due date",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/task",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "task"
+              ]
+            },
+            "description": "How you unset a date — `\"dueDate\": null` means 'leave it alone'.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clearDueDate\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add tag",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "tags"
+              ]
+            },
+            "description": "Tags are unique per Design, case-insensitively.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Priority Review\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = d.id || (d.tags && d.tags[0] && d.tags[0].id);",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('tagId', v);",
+                  "console.log('tagId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add duplicate tag (expect 409)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "tags"
+              ]
+            },
+            "description": "Same label in different case — still a duplicate.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"priority review\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove tag",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/tags/{{tagId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "tags",
+                "{{tagId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 · Files & versions (ONEMEP-39)",
+      "description": "Two levels, and the distinction is the whole ticket: a **logical file** is one row no matter how many revisions; each revision is an immutable row beneath it. Uploading R1 must not create a second top-level entry.\n\n**Attach a file** to the `files` / `file` field before sending — Postman cannot store file contents in a collection.\n\nBytes go to object storage (local disk or S3); only metadata and a storage key are in the database.",
+      "item": [
+        {
+          "name": "Upload file(s)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "files"
+              ]
+            },
+            "description": "Multiple files in one batch; each becomes its own logical file at R0. Partial success: one bad file does not discard the good ones. Max 150 MB per file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "pick one or more files"
+                },
+                {
+                  "key": "note",
+                  "value": "Initial upload",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = (d.results && d.results[0] && d.results[0].fileId);",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('fileId', v);",
+                  "console.log('fileId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List files",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/files",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "files"
+              ]
+            },
+            "description": "`versionCount` counts revisions; the register's Doc column counts logical files."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload a new version",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "versions"
+              ]
+            },
+            "description": "Stays one row, becomes R1. The revision number is allocated under a row lock so two simultaneous uploads cannot collide on R1.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "pick a file"
+                },
+                {
+                  "key": "note",
+                  "value": "Revision 1",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List versions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "versions"
+              ]
+            },
+            "description": "Newest first; `current` marks the live one."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = (d[0] && d[0].id);",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('versionId', v);",
+                  "console.log('versionId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Download a specific revision",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/versions/{{versionId}}/content",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "versions",
+                "{{versionId}}",
+                "content"
+              ]
+            },
+            "description": "Returns that exact revision, not the current one."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Comment on a version",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/versions/{{versionId}}/comments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "versions",
+                "{{versionId}}",
+                "comments"
+              ]
+            },
+            "description": "Comments bind permanently to the revision they were raised against — a newer revision never drags them forward.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Pipe clearance needs correction on grid line C.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List comments (grouped by version)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/comments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "comments"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = (d[0] && d[0].comments && d[0].comments[0] && d[0].comments[0].id);",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('commentId', v);",
+                  "console.log('commentId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve a comment",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/feature/file-comments/{{commentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "file-comments",
+                "{{commentId}}"
+              ]
+            },
+            "description": "OPEN | CLOSED. Open comments block approval.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CLOSED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a retained version",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/versions/{{versionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "versions",
+                "{{versionId}}"
+              ]
+            },
+            "description": "409 if it is the current version or is referenced by workflow history — both are correct outcomes.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": [
+                "pm.test('204 or 200 or 409', () => pm.expect([200,204,409]).to.include(pm.response.code));"
+              ],
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 · Approvals (ONEMEP-40/44)",
+      "description": "A multi-stage workflow engine: unanimous multi-approver decisions, optional two-stage Principal routing, recall, admin reassign and cancel, immutable checklist snapshots.\n\n**Only one active request per logical file** — enforced by a partial unique index, not just a service check.\n\nSome requests here need specific state (a PENDING request, the caller being an assignee). Where a run returns 409/403, that is usually the guard working, not a fault.",
+      "item": [
+        {
+          "name": "Approval context for a file",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/approval-context",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "approval-context"
+              ]
+            },
+            "description": "What the raise-approval popup needs: current version, applicable checklist items, open-comment count."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Raise an approval request",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/approval-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "approval-requests"
+              ]
+            },
+            "description": "The version is frozen at submission. `checkedItemIds` are snapshotted as literal text, never as FKs — the master may later change and the snapshot must not move.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approverIds\": [{{approverId}}],\n  \"checkedItemIds\": [],\n  \"note\": \"Please review the schematic.\",\n  \"routeToPrincipal\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = d.id;",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('approvalRequestId', v);",
+                  "console.log('approvalRequestId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Second request on the same file (expect 409)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/approval-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "approval-requests"
+              ]
+            },
+            "description": "Only one PENDING request per logical file.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approverIds\": [{{approverId}}],\n  \"checkedItemIds\": [],\n  \"note\": \"Duplicate on purpose\",\n  \"routeToPrincipal\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approval journey for a file",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}/approval-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}",
+                "approval-requests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Decide (approve / request edit / reject)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/approval-requests/{{approvalRequestId}}/decisions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "approval-requests",
+                "{{approvalRequestId}}",
+                "decisions"
+              ]
+            },
+            "description": "One endpoint, one guarded transition. decision: APPROVED | EDIT_REQUESTED | REJECTED. Approval is unanimous across assignees.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"APPROVED\",\n  \"note\": \"Looks good.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 or 403', () => pm.expect([200,403]).to.include(pm.response.code));",
+                  "if (pm.response.code === 403) console.warn('403 = the logged-in user is not an assignee on this request — set approverId to your own user id and re-raise');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recall (requester only, pending only)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/approval-requests/{{approvalRequestId}}/recall",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "approval-requests",
+                "{{approvalRequestId}}",
+                "recall"
+              ]
+            },
+            "description": "409 once any decision has landed — the race the ticket calls out explicitly.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Recalling to fix a dimension.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 or 409', () => pm.expect([200,409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reassign (admin only)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/approval-requests/{{approvalRequestId}}/reassign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "approval-requests",
+                "{{approvalRequestId}}",
+                "reassign"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newApproverId\": {{approverId}},\n  \"note\": \"Original approver is on leave.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 403 / 409', () => pm.expect([200,403,409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel (admin only)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/approval-requests/{{approvalRequestId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "approval-requests",
+                "{{approvalRequestId}}",
+                "cancel"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Superseded by a new revision.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 403 / 409', () => pm.expect([200,403,409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Central approval listing",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/approvals/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "approvals",
+                "list"
+              ]
+            },
+            "description": "tab: PENDING | COMPLETED. Personalised to the caller.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20 },\n  \"filters\": { \"tab\": \"PENDING\" }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Action-count badge",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/approvals/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "approvals",
+                "summary"
+              ]
+            },
+            "description": "Items awaiting THIS user — the sidebar badge."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 · Discussion & notifications (ONEMEP-41)",
+      "description": "Mentions are resolved and de-duplicated server-side, so a doubled @name yields one notification.",
+      "item": [
+        {
+          "name": "Post a message",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "messages"
+              ]
+            },
+            "description": "Server parses @mentions, resolves them to users and dedupes.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"@Ava please confirm the plant room dimensions before Friday.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = d.id;",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('messageId', v);",
+                  "console.log('messageId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List messages",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/messages/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "messages",
+                "list"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20, \"sortBy\": \"createdDate\", \"sortDirection\": \"DESC\" },\n  \"filters\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List notifications",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/notifications/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "notifications",
+                "list"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20, \"sortBy\": \"createdDate\", \"sortDirection\": \"DESC\" },\n  \"filters\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = (d.content && d.content[0] && d.content[0].id);",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('notificationId', v);",
+                  "console.log('notificationId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unread count",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/notifications/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "notifications",
+                "unread-count"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark one read",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/feature/notifications/{{notificationId}}/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "notifications",
+                "{{notificationId}}",
+                "read"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark all read",
+          "request": {
+            "method": "PATCH",
+            "url": {
+              "raw": "{{baseUrl}}/feature/notifications/read-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "notifications",
+                "read-all"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09 · Time tracking (ONEMEP-42)",
+      "description": "`workDate` (a date) and the logged timestamp are deliberately different concepts. A day exceeding 24h is rejected.",
+      "item": [
+        {
+          "name": "Log time",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/time-entries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "time-entries"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hours\": 3.5,\n  \"workDate\": \"2026-08-17\",\n  \"note\": \"Schematic markup review\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = d.id;",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('timeEntryId', v);",
+                  "console.log('timeEntryId =', v);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log more than 24h in a day (expect 422/400)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/time-entries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "time-entries"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hours\": 25,\n  \"workDate\": \"2026-08-17\",\n  \"note\": \"Impossible day\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('rejected', () => pm.expect([400,422]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List entries (grouped by user + date)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/time-entries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "time-entries"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete own entry",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/time-entries/{{timeEntryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "time-entries",
+                "{{timeEntryId}}"
+              ]
+            },
+            "description": "Own entries only.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": [
+                "pm.test('200 / 204 / 403', () => pm.expect([200,204,403]).to.include(pm.response.code));"
+              ],
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · Activity trail (ONEMEP-43)",
+      "description": "Append-only, newest first. `detail` is denormalised prose, never an FK — that is what lets \"Uploaded 'riser.pdf'\" survive the file being deleted. Actor identity is snapshotted at write time.",
+      "item": [
+        {
+          "name": "List activity",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}/activities/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}",
+                "activities",
+                "list"
+              ]
+            },
+            "description": "Sorting is fixed by the query — an audit trail the caller can re-sort is not an audit trail.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paginationAndSorting\": { \"pageNumber\": 0, \"pageSize\": 20, \"sortBy\": \"createdDate\", \"sortDirection\": \"DESC\" },\n  \"filters\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data || {};",
+                  "console.log((d.content||[]).map(e => e.action + ' — ' + e.detail).join('\\n'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 · Bulk import (ONEMEP-35 import half)",
+      "description": "Asynchronous: POST answers **202** with a batch id, and progress is polled. Several 150 MB spreadsheets cannot be parsed inside a request without timing out at the gateway.\n\nPartial success throughout: valid rows import, invalid rows are reported, an unreadable file fails only itself.\n\nSample spreadsheets ship alongside this collection in `postman/design-import-*.csv`. For the full set of import scenarios — cross-file duplicates, corrupt workbooks — use ONEMEP-Design-Import.postman_collection.json.",
+      "item": [
+        {
+          "name": "Submit a batch (202)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/feature/projects/{{projectId}}/design-imports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "projects",
+                "{{projectId}}",
+                "design-imports"
+              ]
+            },
+            "description": "Attach design-import-sample.csv. Columns: Discipline, Type, Subject, Floor, Stage, Title required; Zone, Sheet Size, Scale, Prepared By, Work Progress optional. Segment cells carry **codes**, not ids.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "postman/design-import-sample.csv"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "const d = pm.response.json().data || {};",
+                  "const v = d.batchId;",
+                  "if (v !== undefined && v !== null) pm.collectionVariables.set('batchId', v);",
+                  "console.log('batchId =', v);",
+                  "console.log('poll GET /feature/design-imports/' + d.batchId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll batch status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feature/design-imports/{{batchId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "design-imports",
+                "{{batchId}}"
+              ]
+            },
+            "description": "Per-file state: Ready / Uploading / Processing / Imported / Completed with errors / Failed, plus per-row errors. Re-sends itself until terminal (max 30 attempts).",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": [
+                "pm.test('200', () => pm.response.to.have.status(200));",
+                "const s = pm.response.json().data || {};",
+                "console.log(s.statusLabel + ' — ' + s.summary);",
+                "(s.files||[]).forEach(f => console.log('  ' + f.filename + ': ' + f.statusLabel + ' (' + f.importedRows + '/' + f.totalRows + ')'));",
+                "(s.files||[]).forEach(f => (f.errors||[]).forEach(e => console.log('    ' + e.message)));",
+                "const done = ['IMPORTED','COMPLETED_WITH_ERRORS','FAILED'].indexOf(s.status) >= 0;",
+                "if (!done) { const n = (+pm.collectionVariables.get('pollAttempt')||0)+1; pm.collectionVariables.set('pollAttempt', n);",
+                "  if (n < 30) { setTimeout(()=>{}, 800); postman.setNextRequest(pm.info.requestName); } }",
+                "else pm.collectionVariables.set('pollAttempt','0');"
+              ],
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "99 · Cleanup",
+      "description": "Removes what a full run created, so the collection can be run repeatedly against the same Project. Both duplicate rules are per-Project, so leaving Designs behind makes the next run's create requests conflict.",
+      "item": [
+        {
+          "name": "Delete file",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/feature/files/{{fileId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "files",
+                "{{fileId}}"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": [
+                "pm.test('200 / 204 / 409', () => pm.expect([200,204,409]).to.include(pm.response.code));",
+                "if (pm.response.code === 409) console.warn('409 = an approval is still pending on this file');"
+              ],
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete design",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/feature/designs/{{designId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "designs",
+                "{{designId}}"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": [
+                "pm.test('200 or 204', () => pm.expect([200,204]).to.include(pm.response.code));"
+              ],
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete checklist",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists/{{checklistId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists",
+                "{{checklistId}}"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": [
+                "pm.test('200 or 204', () => pm.expect([200,204]).to.include(pm.response.code));"
+              ],
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete single item",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/feature/checklists/{{singleItemId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feature",
+                "checklists",
+                "{{singleItemId}}"
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": [
+                "pm.test('200 or 204', () => pm.expect([200,204]).to.include(pm.response.code));"
+              ],
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
