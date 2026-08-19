@@ -68,14 +68,16 @@ class LookupCatalogueIT {
   void migration_seedsTheConfirmedCodesForEachCatalogue() {
     JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
-    assertThat(count(jdbc, "STAGE")).isEqualTo(6);
-    assertThat(count(jdbc, "DISCIPLINE")).isEqualTo(3);
-    assertThat(count(jdbc, "DESIGN_TYPE")).isEqualTo(2);
-    assertThat(count(jdbc, "SUBJECT")).isEqualTo(1);
+    assertThat(activeCount(jdbc, "STAGE")).isEqualTo(9);
+    assertThat(activeCount(jdbc, "DISCIPLINE")).isEqualTo(10);
+    assertThat(activeCount(jdbc, "DESIGN_TYPE")).isEqualTo(17);
+    assertThat(activeCount(jdbc, "SUBJECT")).isEqualTo(19);
+    assertThat(activeCount(jdbc, "FLOOR")).isEqualTo(15);
 
-    // V18 added the two floor codes the Design tickets actually show ('00' and 'L01'); the full
-    // floor scheme is still outstanding, so nothing beyond those was invented.
-    assertThat(count(jdbc, "FLOOR")).isEqualTo(2);
+    // V26 retired two codes the confirmed list drops. Deactivated, not deleted: existing Designs
+    // reference them by FK and embed the code in their Design Number.
+    assertThat(count(jdbc, "STAGE") - activeCount(jdbc, "STAGE")).isEqualTo(1);
+    assertThat(count(jdbc, "FLOOR") - activeCount(jdbc, "FLOOR")).isEqualTo(1);
 
     // ZONE stays unseeded: ONEMEP-36 describes Zone as typed rather than selected, so whether it
     // is a catalogue at all is still an open question.
@@ -86,10 +88,15 @@ class LookupCatalogueIT {
   void stageCatalogue_isOrderedAsAProgressionNotAlphabetically() throws Exception {
     perform(get("/lookups/stages"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data[0].code").value("CON"))
-        .andExpect(jsonPath("$.data[1].code").value("SD"))
-        .andExpect(jsonPath("$.data[2].code").value("DD"))
-        .andExpect(jsonPath("$.data[5].code").value("AB"));
+        // The confirmed progression (V26). CON is absent because it was retired, and the options
+        // endpoint returns active values only — which is the point of deactivating rather than
+        // deleting: it disappears from the dropdown while existing Designs keep their reference.
+        .andExpect(jsonPath("$.data[0].code").value("SD"))
+        .andExpect(jsonPath("$.data[1].code").value("DD"))
+        .andExpect(jsonPath("$.data[2].code").value("IFA"))
+        .andExpect(jsonPath("$.data[6].code").value("GFC-C"))
+        .andExpect(jsonPath("$.data[8].code").value("AB"))
+        .andExpect(jsonPath("$.data.length()").value(9));
   }
 
   @Test
@@ -174,20 +181,20 @@ class LookupCatalogueIT {
     String created =
         perform(
                 post("/lookups/subjects")
-                    .content("{\"code\":\"hw\",\"label\":\"Hot Water\",\"sortOrder\":2}"))
+                    .content("{\"code\":\"zzt\",\"label\":\"Test Subject\",\"sortOrder\":99}"))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.data.code").value("HW"))
+            .andExpect(jsonPath("$.data.code").value("ZZT"))
             .andReturn()
             .getResponse()
             .getContentAsString();
     long id = Long.parseLong(created.replaceAll(".*\"id\":(\\d+).*", "$1"));
 
-    perform(get("/lookups/subjects")).andExpect(jsonPath("$.data[?(@.code=='HW')]").isNotEmpty());
+    perform(get("/lookups/subjects")).andExpect(jsonPath("$.data[?(@.code=='ZZT')]").isNotEmpty());
 
     perform(patch("/lookups/entries/" + id + "/status").param("active", "false"))
         .andExpect(status().isOk());
 
-    perform(get("/lookups/subjects")).andExpect(jsonPath("$.data[?(@.code=='HW')]").isEmpty());
+    perform(get("/lookups/subjects")).andExpect(jsonPath("$.data[?(@.code=='ZZT')]").isEmpty());
     perform(get("/lookups/entries/" + id))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.active").value(false));
@@ -203,6 +210,15 @@ class LookupCatalogueIT {
   void create_rejectsACodeThatWouldCorruptAGeneratedDesignNumber() throws Exception {
     perform(post("/lookups/disciplines").content("{\"code\":\"A-B/C\",\"label\":\"Bad\"}"))
         .andExpect(status().isBadRequest());
+  }
+
+  private static int activeCount(JdbcTemplate jdbc, String type) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM onemep_dev.lookup_value WHERE lookup_type = ? AND is_active",
+            Integer.class,
+            type);
+    return n == null ? 0 : n;
   }
 
   private static int count(JdbcTemplate jdbc, String type) {
