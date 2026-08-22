@@ -249,7 +249,16 @@ class TechnicalMasterFlowIT {
 
     perform(get("/projects/" + projectId + "/technical-master/did/green-rating-options"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data[*].code", Matchers.hasItem("IGBC")));
+        // The dropdown must offer the prototype rating levels, not the generic
+        // certification bodies that V15 originally seeded (retired in V27).
+        .andExpect(jsonPath("$.data[*].label", Matchers.contains(
+            "None",
+            "IGBC Silver target",
+            "IGBC Gold target",
+            "IGBC Platinum target",
+            "LEED Gold target",
+            "GRIHA 4-star")))
+        .andExpect(jsonPath("$.data[*].code", Matchers.not(Matchers.hasItem("IGBC"))));
 
     // No standalone DID save route exists — the endpoint is gone entirely (ONEMEP-31).
     perform(put("/projects/" + projectId + "/technical-master/did").content("{}"))
@@ -260,7 +269,7 @@ class TechnicalMasterFlowIT {
         "{\"remarks\":\"Initial"
             + " remarks\",\"values\":{},\"did\":{\"designIntentBrief\":{\"lockedDesignIntent\":\"Locked"
             + " intent text\",\"initialClientRfiResponse\":\"RFI"
-            + " response\",\"greenRatingTarget\":\"IGBC\",\"sustainabilityMandates\":\"Solar,"
+            + " response\",\"greenRatingTarget\":\"IGBC Gold target\",\"sustainabilityMandates\":\"Solar,"
             + " RWH\"},\"deliverySchedule\":[{\"stageName\":\"MEP Space Plan & DBR / Sanction"
             + " Drawings\",\"startDate\":\"2026-01-01\",\"endDate\":\"2026-02-01\"},"
             + "{\"stageName\":null,\"startDate\":null,\"endDate\":null}],\"clientInformation\":{\"clientName\":\"Acme\",\"clientCompany\":\"Acme"
@@ -288,6 +297,11 @@ class TechnicalMasterFlowIT {
                 .andExpect(
                     jsonPath("$.data.did.designIntentBrief.lockedDesignIntent")
                         .value("Locked intent text"))
+                // A prototype rating level must survive the save; before V27 the
+                // option table only held the generic bodies and this was rejected.
+                .andExpect(
+                    jsonPath("$.data.did.designIntentBrief.greenRatingTarget")
+                        .value("IGBC GOLD TARGET"))
                 .andExpect(jsonPath("$.data.did.deliverySchedule.length()").value(1))
                 .andExpect(jsonPath("$.data.did.clientInformation.contacts.length()").value(4))
                 .andReturn());
