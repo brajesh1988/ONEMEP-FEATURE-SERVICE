@@ -72,6 +72,7 @@ public class ProjectServiceImpl implements ProjectService {
   private static final Set<String> LIFECYCLE =
       Set.of("DRAFT", "ACTIVE", "ON_HOLD", "COMPLETED", "CLOSED", "CANCELLED", "ARCHIVED");
   private static final Set<String> PRIORITY = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
+  private static final String DEFAULT_PRIORITY = "MEDIUM";
   private static final Set<String> TYPES = Set.of("CONFIRMED", "NON_CONFIRMED");
 
   /** Design stages, in order: concept → schematic → detailed → tender → GFC → as-built. */
@@ -602,9 +603,14 @@ public class ProjectServiceImpl implements ProjectService {
     return value;
   }
 
+  /**
+   * Optional on input — an unsupplied priority means MEDIUM, the default {@link
+   * com.netlink.onemep_feature.project.model.ProjectMaster} already declares. Returning null
+   * instead would only move the failure from here to a NOT NULL violation at flush.
+   */
   private static String validatePriority(String raw) {
     if (raw == null || raw.isBlank()) {
-      throw new ApplicationException("Priority must be one of: LOW, MEDIUM, HIGH, CRITICAL.");
+      return DEFAULT_PRIORITY;
     }
     String value = raw.trim().toUpperCase();
     if (!PRIORITY.contains(value)) {

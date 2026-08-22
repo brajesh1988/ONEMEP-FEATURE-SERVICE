@@ -268,8 +268,9 @@ class TechnicalMasterFlowIT {
             + " Owner\",\"isDefault\":true},{\"designation\":\"Project"
             + " Head\",\"isDefault\":true},{\"designation\":\"Project"
             + " Coordinator\",\"isDefault\":true},{\"designation\":\"Site Lead\",\"name\":\"Jane"
-            + " Doe\",\"mailId\":\"jane@acme.com\",\"contactNo\":\"+91"
-            + " 9876543210\",\"isDefault\":false}]},"
+            // No space in the number: contactNo permits digits plus "+" and "-" only, so the
+            // "+91 9876543210" this fixture used before is now correctly a 400.
+            + " Doe\",\"mailId\":\"jane@acme.com\",\"contactNo\":\"+919876543210\",\"isDefault\":false}]},"
             // Blank contactNo sent as "" (not null) — regression check: @Pattern must accept an
             // empty string on an optional field, matching how the frontend leaves it unfilled.
             + "\"architectTeam\":{\"architectureFirm\":\"ArchCo\",\"contacts\":[{\"designation\":\"Lead"

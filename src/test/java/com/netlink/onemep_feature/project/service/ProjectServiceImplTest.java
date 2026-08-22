@@ -142,6 +142,77 @@ class ProjectServiceImplTest {
   }
 
   @Test
+  void create_withoutPriority_defaultsToMedium() {
+    CategoryMaster category = category(10L, "INF", "Infrastructure", 6);
+    when(projectRepo.findByNameIgnoreCase("Apollo")).thenReturn(Optional.empty());
+    when(categoryRepo.findById(10L)).thenReturn(Optional.of(category));
+    when(projectRepo.saveAndFlush(any(ProjectMaster.class)))
+        .thenAnswer(
+            inv -> {
+              ProjectMaster p = inv.getArgument(0);
+              p.setId(100L);
+              return p;
+            });
+    when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(memberRepo.findByProject_Id(100L)).thenReturn(List.of());
+
+    ProjectDto.CreateRequest request =
+        new ProjectDto.CreateRequest(
+            "Apollo",
+            10L,
+            "NON_CONFIRMED",
+            null, // priority not selected — must not be rejected
+            null,
+            "SD",
+            "Acme Corp",
+            "Dubai",
+            null,
+            null,
+            "demo",
+            List.of());
+
+    ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
+
+    assertThat(data.priority()).isEqualTo("MEDIUM");
+  }
+
+  @Test
+  void create_withBlankPriority_defaultsToMedium() {
+    CategoryMaster category = category(10L, "INF", "Infrastructure", 6);
+    when(projectRepo.findByNameIgnoreCase("Apollo")).thenReturn(Optional.empty());
+    when(categoryRepo.findById(10L)).thenReturn(Optional.of(category));
+    when(projectRepo.saveAndFlush(any(ProjectMaster.class)))
+        .thenAnswer(
+            inv -> {
+              ProjectMaster p = inv.getArgument(0);
+              p.setId(100L);
+              return p;
+            });
+    when(projectRepo.save(any(ProjectMaster.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(memberRepo.findByProject_Id(100L)).thenReturn(List.of());
+
+    // The frontend sends "" rather than null for a control the user never touched.
+    ProjectDto.CreateRequest request =
+        new ProjectDto.CreateRequest(
+            "Apollo",
+            10L,
+            "NON_CONFIRMED",
+            "   ",
+            null,
+            "SD",
+            "Acme Corp",
+            "Dubai",
+            null,
+            null,
+            "demo",
+            List.of());
+
+    ProjectDto.Detail data = (ProjectDto.Detail) service.create(request).getData();
+
+    assertThat(data.priority()).isEqualTo("MEDIUM");
+  }
+
+  @Test
   void create_confirmed_generatesPrefixNumber_andLocksType() {
     CategoryMaster category = category(10L, "HTL", "Hotel", 4);
     when(projectRepo.findByNameIgnoreCase("Marina")).thenReturn(Optional.empty());

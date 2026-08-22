@@ -10,7 +10,7 @@ public final class UnitDto {
 
   public record CreateRequest(
       @NotBlank(message = "Unit name is required.")
-          @Size(max = 150, message = "Unit name must not exceed 150 characters.")
+          @Size(max = 50, message = "Unit name must not exceed 50 characters.")
           String name,
       @NotBlank(message = "Symbol is required.")
           @Size(max = 30, message = "Symbol must not exceed 30 characters.")
@@ -20,7 +20,7 @@ public final class UnitDto {
 
   public record UpdateRequest(
       @NotBlank(message = "Unit name is required.")
-          @Size(max = 150, message = "Unit name must not exceed 150 characters.")
+          @Size(max = 50, message = "Unit name must not exceed 50 characters.")
           String name,
       @NotBlank(message = "Symbol is required.")
           @Size(max = 30, message = "Symbol must not exceed 30 characters.")

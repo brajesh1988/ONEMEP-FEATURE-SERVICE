@@ -19,7 +19,11 @@ public final class DidSpecificationDto {
   // Leading "^$|" lets a blank contact number through — unlike @Email, @Pattern does not
   // treat an empty string as automatically valid, and the frontend sends "" (not null) for
   // fields the user left blank.
-  private static final String PHONE_PATTERN = "^$|^[+]?[0-9()\\-\\s]{7,20}$";
+  //
+  // Digits plus "+" and "-" only, 15 characters maximum. Parentheses and spaces were allowed
+  // before and are not any more, so a number stored as "(020) 1234 5678" will fail validation
+  // the next time its row is edited — that is the intended tightening, not an oversight.
+  private static final String PHONE_PATTERN = "^$|^[0-9+\\-]{1,15}$";
 
   // ── Design Intent & Brief ────────────────────────────────────────────────────
 
